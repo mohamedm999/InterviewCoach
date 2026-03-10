@@ -1,0 +1,149 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum Context {
+  FORMAL
+  STARTUP
+  TECHNICAL
+  CREATIVE
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum RecommendationCategory {
+  TONE
+  CONFIDENCE
+  READABILITY
+  IMPACT
+  STRUCTURE
+  GENERAL
+}
+
+model User {
+  id            String         @id @default(uuid()) @db.Uuid
+  email         String         @unique
+  passwordHash  String
+  displayName   String?
+  role          Role           @default(USER)
+  status        UserStatus     @default(ACTIVE)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  lastLoginAt   DateTime?
+  analyses      Analysis[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Analysis {
+  id              String           @id @default(uuid()) @db.Uuid
+  userId          String           @db.Uuid
+  context         Context
+  inputText       String
+  inputTextHash   String
+  versionIndex    Int
+  scoreGlobal     Int
+  scoreTone       Int
+  scoreConfidence Int
+  scoreReadability Int
+  scoreImpact     Int
+  modelMeta       Json?
+  createdAt       DateTime         @default(now())
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recommendations Recommendation[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, versionIndex])
+  @@map("analyses")
+}
+
+model Recommendation {
+  id          String                 @id @default(uuid()) @db.Uuid
+  analysisId  String                 @db.Uuid
+  category    RecommendationCategory
+  priority    Priority
+  title       String
+  description String
+  examples    String[]
+  createdAt   DateTime               @default(now())
+  analysis    Analysis               @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId])
+  @@map("recommendations")
+}
+
+model PitchTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String
+  context   Context
+  content   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("pitch_templates")
+}
+
+model AnalysisConfig {
+  id         String   @id @default(uuid()) @db.Uuid
+  weights    Json     @default("{\"tone\":25,\"confidence\":25,\"readability\":25,\"impact\":25}")
+  thresholds Json     @default("{\"high\":30,\"medium\":60}")
+  updatedAt  DateTime @updatedAt
+
+  @@map("analysis_config")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String   @db.Uuid
+  action      String
+  entityType  String
+  entityId    String?  @db.Uuid
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  actor       User     @relation(fields: [actorUserId], references: [id])
+
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

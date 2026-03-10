@@ -1,0 +1,26 @@
+Issue Type,Summary,Description,Epic Name,Epic Link,Priority
+Epic,Authentification,Inscription/connexion JWT access+refresh + rotation,Authentification,,High
+Epic,Gestion des utilisateurs,CRUD admin + profil user,Gestion des utilisateurs,,High
+Epic,Analyse IA,Service d'analyse + scoring + recommandations,Analyse IA,,High
+Epic,Historique et statistiques,Historique analyses + progression,Historique et statistiques,,High
+Epic,Dashboard,Dashboards User/Admin,Dashboard,,Medium
+Epic,Export PDF,Génération PDF sécurisée,Export PDF,,Medium
+Epic,Front-end,Pages Next.js + guards + UI,Front-end,,High
+Epic,Back-end,Nest modules + DB + API,Back-end,,High
+Epic,Docker,Images + compose + env,Docker,,High
+Epic,CI/CD,GitHub Actions + Docker Hub,CI/CD,,High
+Epic,Tests,Unit + e2e + front tests,Tests,,High
+Story,IC-1 En tant qu'utilisateur je peux m'inscrire,Créer endpoint register + UI register,,Authentification,High
+Story,IC-2 En tant qu'utilisateur je peux me connecter,Login + refresh + logout,,Authentification,High
+Story,IC-3 En tant qu'utilisateur je peux analyser mon pitch,Créer analyse + afficher résultats,,Analyse IA,High
+Story,IC-4 En tant qu'utilisateur je vois mon historique,Liste analyses + détails,,Historique et statistiques,High
+Story,IC-5 En tant qu'utilisateur je vois ma progression,Graph scores dans le temps,,Dashboard,Medium
+Story,IC-6 En tant qu'utilisateur je télécharge un PDF,Export PDF depuis résultats,,Export PDF,Medium
+Story,IC-7 En tant qu'admin je gère les utilisateurs,Listing + suspendre/réactiver,,Gestion des utilisateurs,High
+Story,IC-8 En tant qu'admin je vois stats globales,Overview global + by context,,Historique et statistiques,Medium
+Task,IC-9 Setup monorepo,Créer structure apps/web apps/api packages/shared,,Back-end,High
+Task,IC-10 Setup DB + migrations,Prisma/TypeORM + tables + index,,Back-end,High
+Task,IC-11 Setup Docker,2 Dockerfiles + docker-compose + .env.example,,Docker,High
+Task,IC-12 Setup CI/CD,GitHub Actions jobs + push images,,CI/CD,High
+Task,IC-13 Tests e2e API,Supertest scenario complet,,Tests,High
+Task,IC-14 Tests front flow,Playwright/Cypress flux complet,,Tests,Medium

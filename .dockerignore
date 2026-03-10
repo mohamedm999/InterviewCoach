@@ -1,0 +1,24 @@
+# Turbo cache
+.turbo
+**/.turbo
+
+# Build outputs (turbo will rebuild)
+**/dist
+**/coverage
+**/.next
+
+# Version control
+.git
+.gitignore
+
+# Environment
+.env
+.env.*
+
+# Misc
+*.log
+.dockerignore
+docs
+.github
+.vscode
+.idea

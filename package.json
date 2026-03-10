@@ -1,0 +1,44 @@
+{
+  "name": "interviewcoach",
+  "version": "1.0.0",
+  "description": "InterviewCoach - AI-powered interview preparation platform",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "start": "turbo run start",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:cov": "turbo run test:cov",
+    "test:e2e": "turbo run test:e2e",
+    "format": "turbo run format",
+    "db:generate": "turbo run db:generate --filter=api",
+    "db:migrate": "turbo run db:migrate --filter=api",
+    "db:seed": "turbo run db:seed --filter=api",
+    "build:api": "turbo run build --filter=api",
+    "build:web": "turbo run build --filter=web",
+    "dev:api": "turbo run dev --filter=api",
+    "dev:web": "turbo run dev --filter=web",
+    "test:api": "turbo run test --filter=api",
+    "test:web": "turbo run test --filter=web",
+    "docker:up": "docker compose up --build -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:restart": "docker compose down && docker compose up --build -d",
+    "clean": "turbo run clean",
+    "clean:all": "npx rimraf node_modules apps/*/node_modules packages/*/node_modules .turbo apps/*/.turbo packages/*/.turbo"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "commonjs",
+  "devDependencies": {
+    "prisma": "^5.22.0",
+    "turbo": "^2.8.13"
+  },
+  "packageManager": "npm@10.0.0"
+}
