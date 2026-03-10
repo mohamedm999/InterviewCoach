@@ -1,13 +1,14 @@
 import { Role as PrismaRole, UserStatus } from '@prisma/client';
-import { AuthResponse as SharedAuthResponse } from '@interviewcoach/shared';
 
-export class AuthResponseDto implements Omit<SharedAuthResponse, 'user'> {
+export class AuthResponseDto {
   accessToken: string;
   refreshToken: string;
   user: {
     id: string;
     email: string;
     displayName: string | null;
+    avatarUrl: string | null;
+    emailVerified: boolean;
     role: PrismaRole;
     status: UserStatus;
   };

@@ -6,6 +6,7 @@ import { RecommendationsModule } from './modules/recommendations/recommendations
 import { StatisticsModule } from './modules/statistics/statistics.module';
 import { PdfExportModule } from './modules/pdf-export/pdf-export.module';
 import { AdminConfigModule } from './modules/admin-config/admin-config.module';
+import { MailModule } from './modules/mail/mail.module';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -33,6 +34,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     StatisticsModule,
     PdfExportModule,
     AdminConfigModule,
+    MailModule,
   ],
   controllers: [AppController],
   providers: [

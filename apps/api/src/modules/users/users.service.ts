@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateProfileDto, ChangePasswordDto } from './dto/update-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { User, UserStatus } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -14,8 +15,10 @@ export class UsersService {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      emailVerified: user.emailVerified,
       role: user.role,
-      isActive: user.status === 'ACTIVE',
+      status: user.status,
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString(),
     };
@@ -33,11 +36,20 @@ export class UsersService {
     id: string,
     dto: UpdateProfileDto,
   ): Promise<UserResponseDto> {
-    const user = await this.prisma.user.update({
-      where: { id },
-      data: { displayName: dto.displayName },
-    });
+    const data: { displayName?: string; avatarUrl?: string } = {};
+    if (dto.displayName !== undefined) data.displayName = dto.displayName;
+    if (dto.avatarUrl !== undefined) data.avatarUrl = dto.avatarUrl;
+    const user = await this.prisma.user.update({ where: { id }, data });
     return this.toDto(user);
+  }
+
+  async changePassword(id: string, dto: ChangePasswordDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!valid) throw new BadRequestException('Current password is incorrect');
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    await this.prisma.user.update({ where: { id }, data: { passwordHash } });
   }
 
   async findAll(query: PaginationQueryDto): Promise<{

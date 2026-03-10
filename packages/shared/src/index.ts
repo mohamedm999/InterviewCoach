@@ -53,6 +53,8 @@ export interface AuthResponse {
     id: string;
     email: string;
     displayName: string | null;
+    avatarUrl: string | null;
+    emailVerified: boolean;
     role: Role;
     status: UserStatus;
   };
@@ -62,6 +64,8 @@ export interface UserResponse {
   id: string;
   email: string;
   displayName: string | null;
+  avatarUrl: string | null;
+  emailVerified: boolean;
   role: Role;
   status: UserStatus;
   createdAt: string;

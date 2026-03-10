@@ -1,7 +1,7 @@
-import { Controller, Get, Patch, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Body, UseGuards, Req, HttpCode, HttpStatus } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateProfileDto, ChangePasswordDto } from './dto/update-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 
 @Controller('users')
@@ -22,5 +22,15 @@ export class UsersController {
     @Body() dto: UpdateProfileDto,
   ): Promise<UserResponseDto> {
     return this.usersService.updateProfile(req.user.userId, dto);
+  }
+
+  // POST /users/me/change-password
+  @Post('me/change-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  changePassword(
+    @Req() req,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    return this.usersService.changePassword(req.user.userId, dto);
   }
 }

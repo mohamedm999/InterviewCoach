@@ -43,4 +43,23 @@ export class AuthController {
     await this.authService.logout(req.user.userId, body.refreshToken);
     return { message: 'Logged out successfully' };
   }
+
+  @Post('request-password-reset')
+  @HttpCode(HttpStatus.OK)
+  async requestPasswordReset(@Body() body: { email: string }) {
+    await this.authService.requestPasswordReset(body.email);
+    return { message: 'If an account with that email exists, a reset link has been sent.' };
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetPassword(@Body() body: { token: string; newPassword: string }) {
+    await this.authService.resetPassword(body.token, body.newPassword);
+  }
+
+  @Post('verify-email')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async verifyEmail(@Body() body: { token: string }) {
+    await this.authService.verifyEmail(body.token);
+  }
 }

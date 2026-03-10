@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Context } from '@prisma/client';
 
@@ -114,5 +114,131 @@ export class StatisticsService {
     }
 
     return result;
+  }
+
+  // ─── CSV Export ─────────────────────────────────────────────────────────────
+
+  async exportUserAnalysesCsv(userId: string): Promise<string> {
+    const analyses = await this.prisma.analysis.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      include: { recommendations: true },
+    });
+
+    const header = [
+      'Date', 'Context', 'Version',
+      'Global Score', 'Tone', 'Confidence', 'Readability', 'Impact',
+      'Recommendations Count', 'Input Text (truncated)'
+    ].join(',');
+
+    const rows = analyses.map((a) => [
+      new Date(a.createdAt).toISOString(),
+      a.context,
+      a.versionIndex,
+      a.scoreGlobal,
+      a.scoreTone,
+      a.scoreConfidence,
+      a.scoreReadability,
+      a.scoreImpact,
+      a.recommendations.length,
+      `"${(a.inputText || '').slice(0, 100).replace(/"/g, "'")}"`,
+    ].join(','));
+
+    return [header, ...rows].join('\n');
+  }
+
+  // ─── Peer Statistics ─────────────────────────────────────────────────────────
+
+  async getPeerStatistics(userId: string) {
+    const [userAvg, globalAgg, contextBreakdown] = await Promise.all([
+      this.prisma.analysis.aggregate({
+        where: { userId },
+        _avg: { scoreGlobal: true, scoreTone: true, scoreConfidence: true, scoreReadability: true, scoreImpact: true },
+        _count: { id: true },
+      }),
+      this.prisma.analysis.aggregate({
+        _avg: { scoreGlobal: true, scoreTone: true, scoreConfidence: true, scoreReadability: true, scoreImpact: true },
+        _count: { id: true },
+      }),
+      this.prisma.analysis.groupBy({
+        by: ['context'],
+        _avg: { scoreGlobal: true },
+        _count: { id: true },
+      }),
+    ]);
+
+    // calculate user percentile (fraction of users with lower average score)
+    const allUserAvgs = await this.prisma.analysis.groupBy({
+      by: ['userId'],
+      _avg: { scoreGlobal: true },
+    });
+
+    const myAvg = userAvg._avg.scoreGlobal ?? 0;
+    const below = allUserAvgs.filter((u) => (u._avg.scoreGlobal ?? 0) < myAvg).length;
+    const percentile = allUserAvgs.length > 1
+      ? Math.round((below / (allUserAvgs.length - 1)) * 100)
+      : 100;
+
+    return {
+      me: {
+        totalAnalyses: userAvg._count.id,
+        avgGlobal: Math.round(myAvg),
+        avgTone: Math.round(userAvg._avg.scoreTone ?? 0),
+        avgConfidence: Math.round(userAvg._avg.scoreConfidence ?? 0),
+        avgReadability: Math.round(userAvg._avg.scoreReadability ?? 0),
+        avgImpact: Math.round(userAvg._avg.scoreImpact ?? 0),
+      },
+      global: {
+        totalAnalyses: globalAgg._count.id,
+        avgGlobal: Math.round(globalAgg._avg.scoreGlobal ?? 0),
+        avgTone: Math.round(globalAgg._avg.scoreTone ?? 0),
+        avgConfidence: Math.round(globalAgg._avg.scoreConfidence ?? 0),
+        avgReadability: Math.round(globalAgg._avg.scoreReadability ?? 0),
+        avgImpact: Math.round(globalAgg._avg.scoreImpact ?? 0),
+      },
+      percentile,
+      contextBreakdown: contextBreakdown.map((c) => ({
+        context: c.context,
+        avgScore: Math.round(c._avg.scoreGlobal ?? 0),
+        count: c._count.id,
+      })),
+    };
+  }
+
+  // ─── Goals ───────────────────────────────────────────────────────────────────
+
+  async getGoals(userId: string) {
+    return this.prisma.userGoal.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } });
+  }
+
+  async createGoal(userId: string, dto: { targetScore: number; category?: string; deadline?: string }) {
+    return this.prisma.userGoal.create({
+      data: {
+        userId,
+        targetScore: dto.targetScore,
+        category: dto.category,
+        deadline: dto.deadline ? new Date(dto.deadline) : null,
+      },
+    });
+  }
+
+  async updateGoal(userId: string, goalId: string, dto: { targetScore?: number; category?: string; deadline?: string; isCompleted?: boolean }) {
+    const goal = await this.prisma.userGoal.findUnique({ where: { id: goalId } });
+    if (!goal || goal.userId !== userId) throw new NotFoundException('Goal not found');
+    return this.prisma.userGoal.update({
+      where: { id: goalId },
+      data: {
+        ...(dto.targetScore !== undefined && { targetScore: dto.targetScore }),
+        ...(dto.category !== undefined && { category: dto.category }),
+        ...(dto.deadline !== undefined && { deadline: new Date(dto.deadline) }),
+        ...(dto.isCompleted !== undefined && { isCompleted: dto.isCompleted }),
+      },
+    });
+  }
+
+  async deleteGoal(userId: string, goalId: string) {
+    const goal = await this.prisma.userGoal.findUnique({ where: { id: goalId } });
+    if (!goal || goal.userId !== userId) throw new NotFoundException('Goal not found');
+    return this.prisma.userGoal.delete({ where: { id: goalId } });
   }
 }

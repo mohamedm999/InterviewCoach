@@ -2,6 +2,8 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -10,8 +12,9 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { MailService } from '../mail/mail.service';
 import { hash, verify } from 'argon2';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 
 interface JwtPayload {
   sub: string;
@@ -25,6 +28,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    private readonly mailService: MailService,
   ) {}
 
   // ─── Register ─────────────────────────────────────────────────────────────────
@@ -62,11 +66,19 @@ export class AuthService {
     const tokens = await this.generateTokens(user.id, user.email, user.role);
     await this.persistRefreshToken(user.id, tokens.refreshToken);
 
+    // 6. Send verification email
+    const verToken = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await this.prisma.verificationToken.create({ data: { userId: user.id, token: verToken, expiresAt } });
+    this.mailService.sendVerificationEmail(user.email, verToken).catch(() => {});
+
     return {
       user: {
         id: user.id,
         email: user.email,
         displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+        emailVerified: user.emailVerified,
         role: user.role,
         status: user.status,
       },
@@ -111,6 +123,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+        emailVerified: user.emailVerified,
         role: user.role,
         status: user.status,
       },
@@ -169,6 +183,8 @@ export class AuthService {
           id: user.id,
           email: user.email,
           displayName: user.displayName,
+          avatarUrl: user.avatarUrl,
+          emailVerified: user.emailVerified,
           role: user.role,
           status: user.status,
         },
@@ -178,6 +194,39 @@ export class AuthService {
       if (error instanceof UnauthorizedException) throw error;
       throw new UnauthorizedException('Invalid refresh token');
     }
+  }
+
+  // ─── Email Verification ───────────────────────────────────────────────────────
+
+  async verifyEmail(token: string): Promise<void> {
+    const record = await this.prisma.verificationToken.findUnique({ where: { token } });
+    if (!record || record.expiresAt < new Date()) {
+      throw new BadRequestException('Invalid or expired verification token');
+    }
+    await this.prisma.user.update({ where: { id: record.userId }, data: { emailVerified: true } });
+    await this.prisma.verificationToken.delete({ where: { token } });
+  }
+
+  // ─── Password Reset ───────────────────────────────────────────────────────────
+
+  async requestPasswordReset(email: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) return; // silent — don't expose whether email exists
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await this.prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
+    await this.prisma.passwordResetToken.create({ data: { userId: user.id, token, expiresAt } });
+    await this.mailService.sendPasswordResetEmail(user.email, token);
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const record = await this.prisma.passwordResetToken.findUnique({ where: { token } });
+    if (!record || record.expiresAt < new Date()) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+    const passwordHash = await hash(newPassword);
+    await this.prisma.user.update({ where: { id: record.userId }, data: { passwordHash } });
+    await this.prisma.passwordResetToken.delete({ where: { token } });
   }
 
   // ─── Logout ───────────────────────────────────────────────────────────────────
