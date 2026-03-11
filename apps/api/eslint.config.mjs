@@ -24,6 +24,24 @@ export default tseslint.config(
       },
     },
   },
+  // Contract layer enforcement: validation constants (MIN/MAX lengths, schemas)
+  // must come from @interviewcoach/shared — never re-declared locally in the API.
+  {
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "zod",
+              message:
+                "Import validation schemas and constants from @interviewcoach/shared, not directly from zod.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   {
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',

@@ -20,7 +20,34 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "lint:fix": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": false
+    },
     "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "inputs": [
+        "src/**/*.tsx",
+        "src/**/*.ts",
+        "test/**/*.ts",
+        "**/*.spec.ts",
+        "**/*.test.tsx"
+      ]
+    },
+    "test:runInBand": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "inputs": [
+        "src/**/*.tsx",
+        "src/**/*.ts",
+        "test/**/*.ts",
+        "**/*.spec.ts",
+        "**/*.test.tsx"
+      ]
+    },
+    "test:ci": {
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"],
       "inputs": [

@@ -11,7 +11,7 @@ env:
   TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
 
 jobs:
-  Build-and-Test:
+  Verify:
     runs-on: ubuntu-latest
 
     strategy:
@@ -21,7 +21,12 @@ jobs:
     env:
       DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/interviewcoach_test"
       JWT_SECRET: "ci-test-secret"
-      OPENAI_API_KEY: "sk-test-ci-key"
+      JWT_REFRESH_SECRET: "ci-test-refresh-secret"
+      APP_URL: "http://localhost:3001"
+      CORS_ORIGINS: "http://localhost:3001"
+      OPENROUTER_API_KEY: "sk-or-v1-ci-test-key"
+      OPENROUTER_BASE_URL: "https://openrouter.ai/api/v1"
+      LLM_COACHING_ENABLED: "false"
 
     steps:
       - name: Checkout code
@@ -47,17 +52,11 @@ jobs:
       - name: Generate Prisma Client
         run: npx turbo run db:generate
 
-      - name: Lint all packages
-        run: npx turbo run lint
-
-      - name: Run tests
-        run: npx turbo run test
-
-      - name: Build all packages
-        run: npx turbo run build
+      - name: Verify repo
+        run: npm run verify
 
   Docker-Publish:
-    needs: Build-and-Test
+    needs: Verify
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 

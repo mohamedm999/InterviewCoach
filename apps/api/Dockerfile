@@ -50,12 +50,7 @@ COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/package.json ./
 
 # Expose port
-EXPOSE 3001
+EXPOSE 3000
 
-# Create entrypoint script for running migrations
-RUN apk add --no-cache bash
-COPY --from=builder /app/apps/api/package.json ./apps/api/
-COPY --from=builder /app/package.json ./
-
-# Run the application with migrations
-CMD ["sh", "-c", "cd apps/api && npm run deploy && node dist/main"]
+# Run the API only
+CMD ["node", "apps/api/dist/main"]
