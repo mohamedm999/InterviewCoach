@@ -11,10 +11,12 @@ import { JwtService } from '@nestjs/jwt';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { AuthResponseDto } from './dto/auth-response.dto';
 import { MailService } from '../mail/mail.service';
+import { LoginAttemptTrackerService } from '../../common/services/login-attempt-tracker.service';
+import { ErrorCode } from '../../common/enums/error-codes.enum';
 import { hash, verify } from 'argon2';
 import { createHash, randomBytes } from 'crypto';
+import { AuthSessionResult } from './auth.types';
 
 interface JwtPayload {
   sub: string;
@@ -29,11 +31,12 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly mailService: MailService,
+    private readonly attemptTracker: LoginAttemptTrackerService,
   ) {}
 
   // ─── Register ─────────────────────────────────────────────────────────────────
 
-  async register(dto: RegisterDto): Promise<AuthResponseDto> {
+  async register(dto: RegisterDto): Promise<AuthSessionResult> {
     // 1. Check if email exists
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
@@ -69,8 +72,12 @@ export class AuthService {
     // 6. Send verification email
     const verToken = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    await this.prisma.verificationToken.create({ data: { userId: user.id, token: verToken, expiresAt } });
-    this.mailService.sendVerificationEmail(user.email, verToken).catch(() => {});
+    await this.prisma.verificationToken.create({
+      data: { userId: user.id, token: verToken, expiresAt },
+    });
+    this.mailService
+      .sendVerificationEmail(user.email, verToken)
+      .catch(() => {});
 
     return {
       user: {
@@ -88,45 +95,77 @@ export class AuthService {
 
   // ─── Login ────────────────────────────────────────────────────────────────────
 
-  async login(dto: LoginDto): Promise<AuthResponseDto> {
+  async login(dto: LoginDto): Promise<AuthSessionResult> {
+    // Check if account is locked due to brute force attempts
+    if (this.attemptTracker.isLocked(dto.email)) {
+      throw new UnauthorizedException({
+        code: ErrorCode.AUTH_ACCOUNT_LOCKED,
+        message: 'Account temporarily locked due to too many failed attempts',
+      });
+    }
+
     // 1. Find user
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      this.attemptTracker.recordFailedAttempt(dto.email);
+      throw new UnauthorizedException({
+        code: ErrorCode.AUTH_INVALID_CREDENTIALS,
+        message: 'Invalid credentials',
+      });
     }
 
-    // 2. Check if user is suspended
-    if (user.status === 'SUSPENDED') {
-      throw new UnauthorizedException('Account is suspended');
+    // 2. Check status
+    if (user.status === 'SUSPENDED' || user.status === 'BANNED') {
+      throw new UnauthorizedException({
+        code: ErrorCode.AUTH_ACCOUNT_SUSPENDED,
+        message: 'Account is suspended or banned',
+      });
     }
 
     // 3. Verify password
-    const isValid = await verify(user.passwordHash, dto.password);
-    if (!isValid) {
-      throw new UnauthorizedException('Invalid credentials');
+    let valid = false;
+    try {
+      valid = await verify(user.passwordHash, dto.password);
+    } catch {
+      this.attemptTracker.recordFailedAttempt(dto.email);
+      throw new UnauthorizedException({
+        code: ErrorCode.AUTH_INVALID_CREDENTIALS,
+        message: 'Invalid credentials',
+      });
     }
 
-    // 4. Update last login
-    await this.prisma.user.update({
+    if (!valid) {
+      this.attemptTracker.recordFailedAttempt(dto.email);
+      throw new UnauthorizedException({
+        code: ErrorCode.AUTH_INVALID_CREDENTIALS,
+        message: 'Invalid credentials',
+      });
+    }
+
+    // 4. Clear failed attempts on successful login
+    this.attemptTracker.resetAttempts(dto.email);
+
+    // 5. Update lastLoginAt
+    const updatedUser = await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
 
-    // 5. Generate tokens and persist refresh token
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
-    await this.persistRefreshToken(user.id, tokens.refreshToken);
+    // 6. Generate tokens and persist refresh token
+    const tokens = await this.generateTokens(updatedUser.id, updatedUser.email, updatedUser.role);
+    await this.persistRefreshToken(updatedUser.id, tokens.refreshToken);
 
     return {
       user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName,
-        avatarUrl: user.avatarUrl,
-        emailVerified: user.emailVerified,
-        role: user.role,
-        status: user.status,
+        id: updatedUser.id,
+        email: updatedUser.email,
+        displayName: updatedUser.displayName,
+        avatarUrl: updatedUser.avatarUrl,
+        emailVerified: updatedUser.emailVerified,
+        role: updatedUser.role,
+        status: updatedUser.status,
       },
       ...tokens,
     };
@@ -134,8 +173,12 @@ export class AuthService {
 
   // ─── Refresh Token ────────────────────────────────────────────────────────────
 
-  async refresh(dto: RefreshTokenDto): Promise<AuthResponseDto> {
+  async refresh(dto: RefreshTokenDto): Promise<AuthSessionResult> {
     try {
+      if (!dto.refreshToken) {
+        throw new UnauthorizedException('Refresh token is required');
+      }
+
       // 1. Verify refresh token JWT signature + expiry
       const payload = this.jwtService.verify<JwtPayload>(dto.refreshToken, {
         secret: this.config.get<string>('JWT_REFRESH_SECRET'),
@@ -170,7 +213,11 @@ export class AuthService {
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
       });
-      if (!user || user.status === 'SUSPENDED') {
+      if (
+        !user ||
+        user.status === 'SUSPENDED' ||
+        user.status === 'BANNED'
+      ) {
         throw new UnauthorizedException('User not found or suspended');
       }
 
@@ -199,11 +246,16 @@ export class AuthService {
   // ─── Email Verification ───────────────────────────────────────────────────────
 
   async verifyEmail(token: string): Promise<void> {
-    const record = await this.prisma.verificationToken.findUnique({ where: { token } });
+    const record = await this.prisma.verificationToken.findUnique({
+      where: { token },
+    });
     if (!record || record.expiresAt < new Date()) {
       throw new BadRequestException('Invalid or expired verification token');
     }
-    await this.prisma.user.update({ where: { id: record.userId }, data: { emailVerified: true } });
+    await this.prisma.user.update({
+      where: { id: record.userId },
+      data: { emailVerified: true },
+    });
     await this.prisma.verificationToken.delete({ where: { token } });
   }
 
@@ -214,18 +266,27 @@ export class AuthService {
     if (!user) return; // silent — don't expose whether email exists
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-    await this.prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
-    await this.prisma.passwordResetToken.create({ data: { userId: user.id, token, expiresAt } });
+    await this.prisma.passwordResetToken.deleteMany({
+      where: { userId: user.id },
+    });
+    await this.prisma.passwordResetToken.create({
+      data: { userId: user.id, token, expiresAt },
+    });
     await this.mailService.sendPasswordResetEmail(user.email, token);
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
-    const record = await this.prisma.passwordResetToken.findUnique({ where: { token } });
+    const record = await this.prisma.passwordResetToken.findUnique({
+      where: { token },
+    });
     if (!record || record.expiresAt < new Date()) {
       throw new BadRequestException('Invalid or expired reset token');
     }
     const passwordHash = await hash(newPassword);
-    await this.prisma.user.update({ where: { id: record.userId }, data: { passwordHash } });
+    await this.prisma.user.update({
+      where: { id: record.userId },
+      data: { passwordHash },
+    });
     await this.prisma.passwordResetToken.delete({ where: { token } });
   }
 

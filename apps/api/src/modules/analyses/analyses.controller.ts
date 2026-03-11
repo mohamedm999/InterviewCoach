@@ -9,6 +9,7 @@ import {
   Req,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AnalysesService } from './analyses.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CreateAnalysisDto } from './dto/create-analysis.dto';
@@ -20,8 +21,9 @@ import { AnalysisResponseDto } from './dto/analysis-response.dto';
 export class AnalysesController {
   constructor(private readonly analysesService: AnalysesService) {}
 
-  // POST /analyses
+  // POST /analyses - Limit to 5 analyses per minute per user
   @Post()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   create(
     @Req() req,
     @Body() dto: CreateAnalysisDto,

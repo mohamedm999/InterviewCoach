@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAnalysisDto } from './dto/create-analysis.dto';
@@ -12,8 +13,11 @@ import { LlmCoachingService } from './llm-coaching.service';
 import { AnalysesGateway } from './analyses.gateway';
 import { Role, Analysis, Recommendation } from '@prisma/client';
 import { createHash } from 'crypto';
+import { sanitizeInput } from '../../common/utils/sanitizer';
 
-type AnalysisWithRecommendations = Analysis & { recommendations: Recommendation[] };
+type AnalysisWithRecommendations = Analysis & {
+  recommendations: Recommendation[];
+};
 
 interface AnalysisWeights {
   tone: number;
@@ -42,102 +46,145 @@ export class AnalysesService {
     userId: string,
     dto: CreateAnalysisDto,
   ): Promise<AnalysisResponseDto> {
-    // 1. Normalize text
-    const normalizedText = this.engine.normalizeText(dto.content);
+    // Validate input length
+    if (!dto.content || dto.content.trim().length === 0) {
+      throw new BadRequestException('Content cannot be empty');
+    }
 
-    // 2. Compute SHA-256 hash of normalized text
-    const inputTextHash = createHash('sha256')
-      .update(normalizedText)
-      .digest('hex');
+    // Use transaction to ensure data consistency
+    return await this.prisma.$transaction(async (tx) => {
+      // 1. Sanitize input to prevent XSS attacks
+      const sanitizedContent = sanitizeInput(dto.content);
 
-    // 3. Load AnalysisConfig weights/thresholds (use first config or defaults)
-    const config = await this.prisma.analysisConfig.findFirst();
-    const weights = config?.weights ?? {
-      tone: 25,
-      confidence: 25,
-      readability: 25,
-      impact: 25,
-    };
-    const thresholds = config?.thresholds ?? { high: 30, medium: 60 };
+      // 2. Normalize text (remove extra spaces, control characters, etc.)
+      const normalizedText = this.engine.normalizeText(sanitizedContent);
 
-    // 5. Compute all scores
-    const tone = this.engine.computeToneScore(normalizedText, dto.context);
-    const confidence = this.engine.computeConfidenceScore(normalizedText);
-    const readability = this.engine.computeReadabilityScore(normalizedText);
-    const impact = this.engine.computeImpactScore(normalizedText);
+      // 3. Compute SHA-256 hash of normalized text
+      const inputTextHash = createHash('sha256')
+        .update(normalizedText)
+        .digest('hex');
 
-    // 6. Compute global
-    const global = this.engine.aggregateGlobalScore(
-      { tone, confidence, readability, impact },
-      weights as unknown as AnalysisWeights,
-    );
+      // 4. Load AnalysisConfig weights/thresholds (use first config or defaults)
+      const config = await tx.analysisConfig.findFirst();
+      const weights = config?.weights ?? {
+        tone: 25,
+        confidence: 25,
+        readability: 25,
+        impact: 25,
+      };
+      const thresholds = config?.thresholds ?? { high: 30, medium: 60 };
 
-    // Broadcast halfway progress
-    this.gateway.broadcastProgress(userId, 50, 'Scores calculated. Generating feedback...');
+      // 5. Compute all scores
+      const tone = this.engine.computeToneScore(normalizedText, dto.context);
+      const confidence = this.engine.computeConfidenceScore(normalizedText);
+      const readability = this.engine.computeReadabilityScore(normalizedText);
+      const impact = this.engine.computeImpactScore(normalizedText);
 
-    // 7. Generate recommendations
-    const recommendations = this.engine.generateRecommendations(
-      { tone, confidence, readability, impact },
-      normalizedText,
-      dto.context,
-      thresholds as unknown as AnalysisThresholds,
-    );
+      // 6. Compute weighted global score
+      const weightsTyped = weights as unknown as AnalysisWeights;
+      const global = Math.round(
+        (tone * weightsTyped.tone +
+          confidence * weightsTyped.confidence +
+          readability * weightsTyped.readability +
+          impact * weightsTyped.impact) /
+          100,
+      );
 
-    // Broadcast AI generation step
-    this.gateway.broadcastProgress(userId, 75, 'Analyzing with AI Coaching Engine...');
-
-    // 8. Generate LLM Coaching
-    const coachingFeedback = await this.llm.generateCoaching(
-      normalizedText,
-      dto.context,
-      { global, tone, confidence, readability, impact }
-    );
-
-    // Broadcast final persistence step
-    this.gateway.broadcastProgress(userId, 90, 'Saving analysis results...');
-
-    // 8. Persist in explicit transaction (atomicity for versionIndex + create)
-    const analysis = await this.prisma.$transaction(async (tx) => {
-      // Re-check versionIndex inside transaction to avoid race conditions
-      const latestAnalysis = await tx.analysis.findFirst({
-        where: { userId },
+      // 7. Check for duplicate analysis (same user + same hash)
+      const existingAnalysis = await tx.analysis.findFirst({
+        where: { userId, inputTextHash, deletedAt: null },
         orderBy: { versionIndex: 'desc' },
       });
-      const safeVersionIndex = (latestAnalysis?.versionIndex ?? 0) + 1;
 
-      return tx.analysis.create({
+      const versionIndex = existingAnalysis ? existingAnalysis.versionIndex + 1 : 0;
+
+      // 8. Create Analysis record
+      const analysis = await tx.analysis.create({
         data: {
           userId,
           context: dto.context,
-          inputText: dto.content,
+          inputText: normalizedText,
           inputTextHash,
-          versionIndex: safeVersionIndex,
+          versionIndex,
           scoreGlobal: global,
           scoreTone: tone,
           scoreConfidence: confidence,
           scoreReadability: readability,
           scoreImpact: impact,
-          modelMeta: { weights, thresholds, coachingFeedback },
-          recommendations: {
-            create: recommendations.map((r) => ({
-              category: r.category,
-              priority: r.priority,
-              title: r.title,
-              description: r.description,
-              examples: r.examples,
-            })),
+          modelMeta: {
+            version: '1.0',
+            timestamp: new Date().toISOString(),
           },
         },
-        include: {
-          recommendations: true,
-        },
       });
+
+      // 9. Generate recommendations
+      const recommendations = this.engine.generateRecommendations(
+        { tone, confidence, readability, impact },
+        normalizedText,
+        dto.context,
+        thresholds as unknown as AnalysisThresholds,
+      );
+
+      // 10. Save recommendations
+      await tx.recommendation.createMany({
+        data: recommendations.map((r) => ({
+          analysisId: analysis.id,
+          category: r.category,
+          priority: r.priority,
+          title: r.title,
+          description: r.description,
+          examples: r.examples,
+        })),
+      });
+
+      // 11. Fetch created recommendations
+      const createdRecommendations = await tx.recommendation.findMany({
+        where: { analysisId: analysis.id },
+      });
+
+      // 12. Generate AI coaching feedback (outside transaction for performance)
+      let coachingFeedback: string | undefined;
+      try {
+        coachingFeedback = await this.llm.generateCoaching(
+          normalizedText,
+          dto.context,
+          { tone, confidence, readability, impact, global },
+        );
+      } catch (error) {
+        console.error('Failed to generate coaching feedback:', error);
+        coachingFeedback = undefined;
+      }
+
+      // 13. Broadcast completion via WebSocket
+      this.gateway.broadcastComplete(analysis.id);
+
+      // 14. Return response
+      return {
+        analysisId: analysis.id,
+        userId: analysis.userId,
+        context: analysis.context,
+        inputText: analysis.inputText,
+        versionIndex: analysis.versionIndex,
+        scores: {
+          global: analysis.scoreGlobal,
+          tone: analysis.scoreTone,
+          confidence: analysis.scoreConfidence,
+          readability: analysis.scoreReadability,
+          impact: analysis.scoreImpact,
+        },
+        recommendations: createdRecommendations.map((r) => ({
+          id: r.id,
+          category: r.category,
+          priority: r.priority,
+          title: r.title,
+          description: r.description,
+          examples: r.examples,
+        })),
+        coachingFeedback,
+        createdAt: analysis.createdAt,
+      };
     });
-
-    this.gateway.broadcastProgress(userId, 100, 'Complete');
-    this.gateway.broadcastComplete(analysis.id);
-
-    return this.toDto(analysis);
   }
 
   // ─── Get One ──────────────────────────────────────────────────────────────
@@ -147,8 +194,11 @@ export class AnalysesService {
     requestingUserId: string,
     requestingUserRole: Role,
   ): Promise<AnalysisResponseDto> {
-    const analysis = await this.prisma.analysis.findUnique({
-      where: { id },
+    const analysis = await this.prisma.analysis.findFirst({
+      where: { 
+        id,
+        deletedAt: null, // Exclude soft-deleted analyses
+      },
       include: { recommendations: true },
     });
     if (!analysis) {
@@ -187,6 +237,7 @@ export class AnalysesService {
     if (query.to) dateFilter.lte = new Date(query.to);
 
     const where = {
+      deletedAt: null, // Exclude soft-deleted analyses
       ...(requestingUserRole !== Role.ADMIN
         ? { userId: requestingUserId }
         : query.userId
@@ -213,6 +264,38 @@ export class AnalysesService {
       page,
       pageSize,
     };
+  }
+
+  // ─── Soft Delete ──────────────────────────────────────────────────────────
+
+  async softDelete(
+    id: string,
+    requestingUserId: string,
+    requestingUserRole: Role,
+  ): Promise<void> {
+    const analysis = await this.prisma.analysis.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+      },
+    });
+
+    if (!analysis) {
+      throw new NotFoundException('Analysis not found');
+    }
+
+    // Check ownership
+    if (
+      analysis.userId !== requestingUserId &&
+      requestingUserRole !== Role.ADMIN
+    ) {
+      throw new ForbiddenException('You do not have permission to delete this analysis');
+    }
+
+    await this.prisma.analysis.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

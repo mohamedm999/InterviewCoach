@@ -4,7 +4,7 @@ import { UpdateProfileDto, ChangePasswordDto } from './dto/update-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { User, UserStatus } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+import { hash, verify } from 'argon2';
 
 @Injectable()
 export class UsersService {
@@ -46,25 +46,29 @@ export class UsersService {
   async changePassword(id: string, dto: ChangePasswordDto): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
-    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    const valid = await verify(user.passwordHash, dto.currentPassword);
     if (!valid) throw new BadRequestException('Current password is incorrect');
-    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    const passwordHash = await hash(dto.newPassword);
     await this.prisma.user.update({ where: { id }, data: { passwordHash } });
   }
 
-  async findAll(query: PaginationQueryDto): Promise<{
+  async findAll(query: { page?: number; pageSize?: number; limit?: number; search?: string }): Promise<{
     data: UserResponseDto[];
     total: number;
     page: number;
     pageSize: number;
   }> {
     const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
+    const pageSize = query.pageSize ?? query.limit ?? 10;
     const skip = (page - 1) * pageSize;
 
-    const where: Partial<Record<string, unknown>> = {};
-    if (query.role) where.role = query.role;
-    if (query.status) where.status = query.status;
+    const where: any = {};
+    if (query.search) {
+      where.OR = [
+        { email: { contains: query.search, mode: 'insensitive' } },
+        { displayName: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
 
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({

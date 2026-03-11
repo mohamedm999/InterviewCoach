@@ -6,6 +6,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { IsNumber, IsInt, Min, Max, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { AuditLog } from '../../common/decorators/audit-log.decorator';
 
 class WeightsDto {
   @IsNumber() @Min(0) @Max(100) tone: number;
@@ -38,6 +39,7 @@ export class AdminConfigController {
 
   // PUT /admin/config
   @Put()
+  @AuditLog('ADMIN_UPDATE_CONFIG', 'AnalysisConfig')
   updateConfig(@Body() dto: UpdateConfigDto) {
     return this.adminConfigService.updateConfig(dto);
   }

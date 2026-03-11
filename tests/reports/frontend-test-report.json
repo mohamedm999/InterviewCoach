@@ -1,0 +1,127 @@
+{
+  "timestamp": "2026-03-17T10:31:20.396Z",
+  "summary": {
+    "total": 18,
+    "passed": 18,
+    "failed": 0,
+    "warnings": 0
+  },
+  "routes": {
+    "public": [
+      {
+        "path": "/",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": false
+      },
+      {
+        "path": "/about",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": false
+      },
+      {
+        "path": "/privacy",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": false
+      },
+      {
+        "path": "/terms",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": false
+      }
+    ],
+    "auth": [
+      {
+        "path": "/auth/login",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": false
+      },
+      {
+        "path": "/auth/register",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": false
+      },
+      {
+        "path": "/auth/forgot-password",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": false
+      },
+      {
+        "path": "/auth/reset-password",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": false
+      },
+      {
+        "path": "/auth/verify",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": false
+      }
+    ],
+    "dashboard": [
+      {
+        "path": "/dashboard",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": true
+      },
+      {
+        "path": "/statistics",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": true
+      },
+      {
+        "path": "/history",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": true
+      },
+      {
+        "path": "/profile",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": true
+      },
+      {
+        "path": "/analysis/new",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": true
+      }
+    ],
+    "admin": [
+      {
+        "path": "/admin",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": true
+      },
+      {
+        "path": "/admin/templates",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": true
+      },
+      {
+        "path": "/admin/config",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": true
+      },
+      {
+        "path": "/admin/audit-logs",
+        "status": "passed",
+        "statusCode": 200,
+        "requiresAuth": true
+      }
+    ]
+  }
+}

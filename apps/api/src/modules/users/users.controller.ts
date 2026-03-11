@@ -3,6 +3,7 @@ import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { UpdateProfileDto, ChangePasswordDto } from './dto/update-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
+import { AuditLog } from '../../common/decorators/audit-log.decorator';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -17,6 +18,7 @@ export class UsersController {
 
   // PATCH /users/me
   @Patch('me')
+  @AuditLog('USER_UPDATE_PROFILE', 'User')
   updateMe(
     @Req() req,
     @Body() dto: UpdateProfileDto,
@@ -27,6 +29,7 @@ export class UsersController {
   // POST /users/me/change-password
   @Post('me/change-password')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @AuditLog('USER_CHANGE_PASSWORD', 'User')
   changePassword(
     @Req() req,
     @Body() dto: ChangePasswordDto,

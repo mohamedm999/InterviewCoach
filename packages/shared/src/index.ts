@@ -9,6 +9,7 @@ export enum Role {
 export enum UserStatus {
   ACTIVE = "ACTIVE",
   SUSPENDED = "SUSPENDED",
+  BANNED = "BANNED",
 }
 
 export enum Context {
@@ -47,8 +48,6 @@ export interface LoginDto {
 }
 
 export interface AuthResponse {
-  accessToken: string;
-  refreshToken: string;
   user: {
     id: string;
     email: string;
@@ -102,6 +101,7 @@ export interface AnalysisResponse {
   versionIndex: number;
   scores: ScoresResponse;
   recommendations: RecommendationResponse[];
+  coachingFeedback?: string;
   createdAt: string;
 }
 
@@ -118,21 +118,29 @@ export const MIN_PITCH_LENGTH = 50;
 
 // Schemas
 export const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 export type LoginSchemaType = z.infer<typeof loginSchema>;
 
 export const registerSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
+  email: z.string().email("Invalid email address"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(
+      /(?=.*[A-Z])(?=.*[0-9])/,
+      "Password must contain at least 1 uppercase letter and 1 number"
+    ),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
 });
 export type RegisterSchemaType = z.infer<typeof registerSchema>;
 
 export const analysisSchema = z.object({
   context: z.nativeEnum(Context),
-  inputText: z.string().min(10, 'Your pitch is too short. Please provide at least 10 characters.'),
+  content: z
+    .string()
+    .min(10, "Your pitch is too short. Please provide at least 10 characters."),
 });
 export type AnalysisSchemaType = z.infer<typeof analysisSchema>;

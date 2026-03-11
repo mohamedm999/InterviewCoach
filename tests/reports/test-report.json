@@ -1,0 +1,149 @@
+{
+  "timestamp": "2026-03-17T10:40:34.563Z",
+  "summary": {
+    "total": 18,
+    "passed": 0,
+    "failed": 18,
+    "warnings": 0
+  },
+  "results": {
+    "auth": [
+      {
+        "module": "auth",
+        "test": "Login with valid credentials",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "auth",
+        "test": "Login with invalid credentials",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "auth",
+        "test": "Register new user",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "auth",
+        "test": "Register with existing email",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "auth",
+        "test": "Logout",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      }
+    ],
+    "users": [
+      {
+        "module": "users",
+        "test": "Get current user",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "users",
+        "test": "Get current user without auth",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "users",
+        "test": "Update profile",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      }
+    ],
+    "analyses": [
+      {
+        "module": "analyses",
+        "test": "Create analysis",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "analyses",
+        "test": "Get analyses list",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "analyses",
+        "test": "Get analyses without auth",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      }
+    ],
+    "templates": [
+      {
+        "module": "templates",
+        "test": "Get templates",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "templates",
+        "test": "Create template",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      }
+    ],
+    "admin": [
+      {
+        "module": "admin",
+        "test": "Get admin config",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "admin",
+        "test": "Get audit logs",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "admin",
+        "test": "Get admin stats",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      }
+    ],
+    "statistics": [
+      {
+        "module": "statistics",
+        "test": "Get user progression",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      },
+      {
+        "module": "statistics",
+        "test": "Get user goals",
+        "status": "failed",
+        "message": "",
+        "error": "AggregateError"
+      }
+    ]
+  }
+}

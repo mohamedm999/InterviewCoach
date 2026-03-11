@@ -7,6 +7,9 @@ import { StatisticsModule } from './modules/statistics/statistics.module';
 import { PdfExportModule } from './modules/pdf-export/pdf-export.module';
 import { AdminConfigModule } from './modules/admin-config/admin-config.module';
 import { MailModule } from './modules/mail/mail.module';
+import { PitchTemplatesModule } from './modules/pitch-templates/pitch-templates.module';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
+import { GoalsModule } from './modules/goals/goals.module';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -14,17 +17,18 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['../../.env', '.env'],
+      envFilePath: ['.env.development', '.env'],
     }),
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
-        limit: 20,
+        limit: 100,
       },
     ]),
     AuthModule,
@@ -35,6 +39,9 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     PdfExportModule,
     AdminConfigModule,
     MailModule,
+    PitchTemplatesModule,
+    AuditLogsModule,
+    GoalsModule,
   ],
   controllers: [AppController],
   providers: [
@@ -50,6 +57,10 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditLogInterceptor,
     },
   ],
 })

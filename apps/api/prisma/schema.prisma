@@ -21,6 +21,7 @@ enum Role {
 enum UserStatus {
   ACTIVE
   SUSPENDED
+  BANNED
 }
 
 enum Context {
@@ -74,9 +75,13 @@ model RefreshToken {
   expiresAt DateTime
   isRevoked Boolean  @default(false)
   createdAt DateTime @default(now())
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([tokenHash])
   @@map("refresh_tokens")
 }
 
@@ -94,11 +99,14 @@ model Analysis {
   scoreImpact     Int
   modelMeta       Json?
   createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   recommendations Recommendation[]
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, versionIndex])
+  @@index([deletedAt])
   @@map("analyses")
 }
 
@@ -114,6 +122,8 @@ model Recommendation {
   analysis    Analysis               @relation(fields: [analysisId], references: [id], onDelete: Cascade)
 
   @@index([analysisId])
+  @@index([category])
+  @@index([priority])
   @@map("recommendations")
 }
 
@@ -125,16 +135,23 @@ model PitchTemplate {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  createdBy String?  @db.Uuid
 
   @@map("pitch_templates")
 }
 
 model AnalysisConfig {
   id         String   @id @default(uuid()) @db.Uuid
-  weights    Json     @default("{\"tone\":25,\"confidence\":25,\"readability\":25,\"impact\":25}")
-  thresholds Json     @default("{\"high\":30,\"medium\":60}")
+  version    Int      @default(1)
+  isActive   Boolean  @default(false)
+  weights    Json
+  thresholds Json
+  createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  createdBy  String?  @db.Uuid
 
+  @@index([version])
+  @@index([isActive])
   @@map("analysis_config")
 }
 
@@ -145,11 +162,15 @@ model AuditLog {
   entityType  String
   entityId    String?  @db.Uuid
   metadata    Json?
+  ipAddress   String?
+  userAgent   String?
   createdAt   DateTime @default(now())
   actor       User     @relation(fields: [actorUserId], references: [id])
 
   @@index([actorUserId])
   @@index([createdAt])
+  @@index([action])
+  @@index([entityType, entityId])
   @@map("audit_logs")
 }
 
@@ -158,10 +179,12 @@ model VerificationToken {
   userId    String   @db.Uuid
   token     String   @unique
   expiresAt DateTime
+  usedAt    DateTime?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([token])
   @@map("verification_tokens")
 }
 
@@ -170,10 +193,12 @@ model PasswordResetToken {
   userId    String   @db.Uuid
   token     String   @unique
   expiresAt DateTime
+  usedAt    DateTime?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([token])
   @@map("password_reset_tokens")
 }
 
@@ -181,13 +206,16 @@ model UserGoal {
   id            String   @id @default(uuid()) @db.Uuid
   userId        String   @db.Uuid
   targetScore   Int
+  currentScore  Int?     @default(0)
   category      String?  
   deadline      DateTime?
   isCompleted   Boolean  @default(false)
+  completedAt   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([isCompleted])
   @@map("user_goals")
 }

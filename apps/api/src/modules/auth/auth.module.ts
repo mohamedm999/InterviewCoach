@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
+import { LoginAttemptTrackerService } from '../../common/services/login-attempt-tracker.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
@@ -25,7 +26,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtRefreshStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    JwtRefreshStrategy,
+    LoginAttemptTrackerService,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

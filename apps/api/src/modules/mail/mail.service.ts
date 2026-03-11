@@ -34,7 +34,7 @@ export class MailService {
   }
 
   async sendVerificationEmail(email: string, token: string): Promise<void> {
-    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3000';
+    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3001';
     const url = `${appUrl}/auth/verify?token=${token}`;
     await this.send(email, 'Verify your InterviewCoach account', `
       <h2>Welcome to InterviewCoach!</h2>
@@ -45,7 +45,7 @@ export class MailService {
   }
 
   async sendPasswordResetEmail(email: string, token: string): Promise<void> {
-    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3000';
+    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3001';
     const url = `${appUrl}/auth/reset-password?token=${token}`;
     await this.send(email, 'Reset your InterviewCoach password', `
       <h2>Password Reset Request</h2>

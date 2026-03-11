@@ -15,6 +15,7 @@ import { Role } from '@prisma/client';
 import { AdminUpdateStatusDto } from './dto/admin-update-status.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { UserResponseDto } from './dto/user-response.dto';
+import { AuditLog } from '../../common/decorators/audit-log.decorator';
 
 @Controller('admin/users')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -35,6 +36,7 @@ export class AdminUsersController {
 
   // PATCH /admin/users/:id/status
   @Patch(':id/status')
+  @AuditLog('ADMIN_UPDATE_USER_STATUS', 'User')
   updateStatus(
     @Param('id') id: string,
     @Body() dto: AdminUpdateStatusDto,

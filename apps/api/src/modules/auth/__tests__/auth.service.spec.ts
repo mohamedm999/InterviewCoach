@@ -9,6 +9,8 @@ import { RegisterDto } from '../dto/register.dto';
 import { LoginDto } from '../dto/login.dto';
 import { RefreshTokenDto } from '../dto/refresh-token.dto';
 import { Role, UserStatus } from '@prisma/client';
+import { MailService } from '../../mail/mail.service';
+import { LoginAttemptTrackerService } from '../../../common/services/login-attempt-tracker.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -29,6 +31,9 @@ describe('AuthService', () => {
       updateMany: jest.fn(),
       create: jest.fn(),
     },
+    verificationToken: {
+      create: jest.fn(),
+    },
   };
 
   const mockJwtService = {
@@ -41,6 +46,17 @@ describe('AuthService', () => {
     get: jest.fn(),
   };
 
+  const mockMailService = {
+    sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
+    sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const mockLoginAttemptTrackerService = {
+    isLocked: jest.fn().mockReturnValue(false),
+    recordFailedAttempt: jest.fn(),
+    resetAttempts: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -48,6 +64,11 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: MailService, useValue: mockMailService },
+        {
+          provide: LoginAttemptTrackerService,
+          useValue: mockLoginAttemptTrackerService,
+        },
       ],
     }).compile();
 
@@ -78,6 +99,8 @@ describe('AuthService', () => {
         passwordHash: hashedPassword,
         role: 'USER' as Role,
         status: 'ACTIVE' as UserStatus,
+        avatarUrl: null,
+        emailVerified: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         lastLoginAt: null,
@@ -104,6 +127,9 @@ describe('AuthService', () => {
       jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(null); // No existing user
       jest.spyOn(prismaService.user, 'create').mockResolvedValue(newUser);
       jest
+        .spyOn(mockPrismaService.verificationToken, 'create')
+        .mockResolvedValue({} as any);
+      jest
         .spyOn(mockPrismaService.refreshToken, 'create')
         .mockResolvedValue({} as any);
       jest
@@ -127,6 +153,10 @@ describe('AuthService', () => {
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');
       expect(result.user.email).toBe(registerDto.email);
+      expect(mockMailService.sendVerificationEmail).toHaveBeenCalledWith(
+        registerDto.email,
+        expect.any(String),
+      );
     });
 
     it('should reject duplicate email on register', async () => {
@@ -144,6 +174,8 @@ describe('AuthService', () => {
         role: 'USER' as Role,
         status: 'ACTIVE' as UserStatus,
         displayName: null,
+        avatarUrl: null,
+        emailVerified: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         lastLoginAt: null,
@@ -173,6 +205,8 @@ describe('AuthService', () => {
         role: 'USER' as Role,
         status: 'ACTIVE' as UserStatus,
         displayName: null,
+        avatarUrl: null,
+        emailVerified: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         lastLoginAt: null,
@@ -230,6 +264,8 @@ describe('AuthService', () => {
         role: 'USER' as Role,
         status: 'ACTIVE' as UserStatus,
         displayName: null,
+        avatarUrl: null,
+        emailVerified: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         lastLoginAt: null,
@@ -238,8 +274,45 @@ describe('AuthService', () => {
       jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(user);
       jest.spyOn(argon2, 'verify').mockResolvedValue(false);
 
-      await expect(service.login(loginDto)).rejects.toThrow(
-        new UnauthorizedException('Invalid credentials'),
+      await expect(service.login(loginDto)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('should return unauthorized when password hash verification throws', async () => {
+      const loginDto: LoginDto = {
+        email: 'test@example.com',
+        password: 'TestPassword123!',
+      };
+
+      const user: any = {
+        id: 'user-id',
+        email: loginDto.email,
+        passwordHash: 'invalid_hash_value',
+        role: 'USER' as Role,
+        status: 'ACTIVE' as UserStatus,
+        displayName: null,
+        avatarUrl: null,
+        emailVerified: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastLoginAt: null,
+      };
+
+      jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(user);
+      jest
+        .spyOn(argon2, 'verify')
+        .mockRejectedValue(new Error('pchstr must contain a $ as first char'));
+
+      await expect(service.login(loginDto)).rejects.toEqual(
+        new UnauthorizedException({
+          code: 'AUTH_INVALID_CREDENTIALS',
+          message: 'Invalid credentials',
+        }),
+      );
+
+      expect(mockLoginAttemptTrackerService.recordFailedAttempt).toHaveBeenCalledWith(
+        loginDto.email,
       );
     });
 
@@ -251,8 +324,8 @@ describe('AuthService', () => {
 
       jest.spyOn(prismaService.user, 'findUnique').mockResolvedValue(null);
 
-      await expect(service.login(loginDto)).rejects.toThrow(
-        new UnauthorizedException('Invalid credentials'),
+      await expect(service.login(loginDto)).rejects.toBeInstanceOf(
+        UnauthorizedException,
       );
     });
   });
@@ -276,6 +349,8 @@ describe('AuthService', () => {
         role: 'USER' as Role,
         status: 'ACTIVE' as UserStatus,
         displayName: null,
+        avatarUrl: null,
+        emailVerified: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         lastLoginAt: null,
