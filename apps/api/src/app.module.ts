@@ -18,12 +18,17 @@ import { AppService } from './app.service';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor';
+import { SuccessResponseInterceptor } from './common/interceptors/success-response.interceptor';
+import appConfig from './config/app.config';
+import { validateEnv } from './config/env.validation';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env.development', '.env'],
+      load: [appConfig],
+      validate: validateEnv,
     }),
     ThrottlerModule.forRoot([
       {
@@ -53,6 +58,10 @@ import { AuditLogInterceptor } from './common/interceptors/audit-log.interceptor
     {
       provide: APP_FILTER,
       useClass: HttpExceptionFilter,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: SuccessResponseInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,

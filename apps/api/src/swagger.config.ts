@@ -1,13 +1,25 @@
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { INestApplication, Logger } from '@nestjs/common';
 
 export function setupSwagger(app: INestApplication): void {
+  const logger = new Logger('Swagger');
+  const configService = app.get(ConfigService);
+  const nodeEnv = configService.get<string>('nodeEnv') || 'development';
+  const port = configService.get<number>('port') ?? 3000;
+  const swaggerEnabled = configService.get<boolean>('swagger.enabled') ?? false;
+  const swaggerPath = configService.get<string>('swagger.path') || 'api/docs';
+
+  if (!swaggerEnabled) {
+    return;
+  }
+
   const config = new DocumentBuilder()
     .setTitle('InterviewCoach API')
     .setDescription(
       'AI-powered interview preparation platform API. ' +
-      'This API provides endpoints for user authentication, analysis creation, ' +
-      'recommendations, statistics, goals tracking, and admin operations.',
+        'This API provides endpoints for user authentication, analysis creation, ' +
+        'recommendations, statistics, goals tracking, and admin operations.',
     )
     .setVersion('1.0')
     .setContact(
@@ -39,15 +51,15 @@ export function setupSwagger(app: INestApplication): void {
     .addTag('Admin - Statistics', 'Admin analytics and reporting')
     .addTag('Admin - Audit Logs', 'Admin audit log access')
     .addServer(
-      process.env.NODE_ENV === 'production' 
+      nodeEnv === 'production'
         ? 'https://api.interviewcoach.app/api/v1'
-        : `http://localhost:${process.env.PORT || 3001}/api/v1`,
-      process.env.NODE_ENV === 'production' ? 'Production' : 'Development'
+        : `http://localhost:${port}/api/v1`,
+      nodeEnv === 'production' ? 'Production' : 'Development',
     )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup(process.env.SWAGGER_PATH || 'api/docs', app, document, {
+  SwaggerModule.setup(swaggerPath, app, document, {
     customSiteTitle: 'InterviewCoach API Documentation',
     customfavIcon: 'https://interviewcoach.app/favicon.ico',
     customCss: `
@@ -64,5 +76,5 @@ export function setupSwagger(app: INestApplication): void {
     },
   });
 
-  console.log(`📚 Swagger documentation available at: /${process.env.SWAGGER_PATH || 'api/docs'}`);
+  logger.log(`Swagger documentation available at: /${swaggerPath}`);
 }

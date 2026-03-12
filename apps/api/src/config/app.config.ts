@@ -1,9 +1,53 @@
+function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  if (value === 'true') {
+    return true;
+  }
+
+  if (value === 'false') {
+    return false;
+  }
+
+  throw new Error(`Invalid boolean value "${value}" in environment configuration`);
+}
+
+function parseInteger(
+  value: string | undefined,
+  defaultValue: number,
+  field: string,
+): number {
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  const parsed = parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid ${field} value "${value}" in environment configuration`);
+  }
+
+  return parsed;
+}
+
+function parseLlmProvider(value: string | undefined): 'openrouter' {
+  const provider = value || 'openrouter';
+  if (provider !== 'openrouter') {
+    throw new Error(`Unsupported LLM_PROVIDER "${provider}"`);
+  }
+
+  return provider;
+}
+
 export default () => ({
   // Application
   nodeEnv: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3000', 10),
   appName: process.env.APP_NAME || 'InterviewCoach',
-  appUrl: process.env.APP_URL || 'http://localhost:3001',
+  appUrl:
+    process.env.APP_URL ||
+    (process.env.NODE_ENV === 'development' ? 'http://localhost:3001' : undefined),
 
   // Database
   database: {
@@ -20,7 +64,11 @@ export default () => ({
 
   // CORS
   cors: {
-    origins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3001'],
+    origins:
+      process.env.CORS_ORIGINS?.split(',') ||
+      (process.env.NODE_ENV === 'development'
+        ? ['http://localhost:3001']
+        : undefined),
   },
 
   // Logging
@@ -30,16 +78,36 @@ export default () => ({
 
   // Email
   mail: {
-    host: process.env.MAIL_HOST || 'smtp.gmail.com',
+    host: process.env.MAIL_HOST,
     port: parseInt(process.env.MAIL_PORT || '587', 10),
     user: process.env.MAIL_USER,
     password: process.env.MAIL_PASSWORD,
-    from: process.env.MAIL_FROM || 'noreply@interviewcoach.app',
+    from:
+      process.env.MAIL_FROM ||
+      (process.env.NODE_ENV === 'development'
+        ? 'noreply@interviewcoach.app'
+        : undefined),
   },
 
   // OpenAI
   openai: {
     apiKey: process.env.OPENAI_API_KEY,
+  },
+
+  // LLM Coaching
+  llm: {
+    enabled: parseBoolean(process.env.LLM_COACHING_ENABLED, false),
+    provider: parseLlmProvider(process.env.LLM_PROVIDER),
+    model: process.env.LLM_MODEL || 'openai/gpt-4o-mini',
+    timeoutMs: parseInteger(
+      process.env.LLM_TIMEOUT_MS,
+      10000,
+      'LLM_TIMEOUT_MS',
+    ),
+    openrouter: {
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+    },
   },
 
   // Sentry
