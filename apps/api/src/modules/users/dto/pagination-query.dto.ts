@@ -1,21 +1,8 @@
-import { IsOptional, IsInt, Min, Max, IsEnum } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsEnum } from 'class-validator';
 import { Role, UserStatus } from '@prisma/client';
+import { BasePaginationDto } from '../../../common/dto/base-pagination.dto';
 
-export class PaginationQueryDto {
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  pageSize?: number = 20;
-
+export class PaginationQueryDto extends BasePaginationDto {
   @IsOptional()
   @IsEnum(Role)
   role?: Role;

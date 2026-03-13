@@ -1,4 +1,12 @@
-import { Controller, Get, Patch, Post, Body, UseGuards, Req, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Body,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { UpdateProfileDto, ChangePasswordDto } from './dto/update-profile.dto';
@@ -28,12 +36,9 @@ export class UsersController {
 
   // POST /users/me/change-password
   @Post('me/change-password')
-  @HttpCode(HttpStatus.NO_CONTENT)
   @AuditLog('USER_CHANGE_PASSWORD', 'User')
-  changePassword(
-    @Req() req,
-    @Body() dto: ChangePasswordDto,
-  ): Promise<void> {
-    return this.usersService.changePassword(req.user.userId, dto);
+  async changePassword(@Req() req, @Body() dto: ChangePasswordDto) {
+    await this.usersService.changePassword(req.user.userId, dto);
+    return { message: 'Password changed successfully' };
   }
 }

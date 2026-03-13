@@ -1,8 +1,12 @@
 import { UsersService } from './users.service';
+import { NotFoundException } from '@nestjs/common';
+import { UserStatus } from '@prisma/client';
 
 describe('UsersService', () => {
   const prisma = {
     user: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
     },
@@ -29,5 +33,15 @@ describe('UsersService', () => {
     });
     expect(result.page).toBe(2);
     expect(result.pageSize).toBe(25);
+  });
+
+  it('throws a 404 when updating the status of a missing user', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(service.updateStatus('missing-user', UserStatus.ACTIVE)).rejects.toThrow(
+      new NotFoundException('User not found'),
+    );
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 });

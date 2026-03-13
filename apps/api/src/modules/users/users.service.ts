@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateProfileDto, ChangePasswordDto } from './dto/update-profile.dto';
 import { UserResponseDto } from './dto/user-response.dto';
@@ -27,7 +31,7 @@ export class UsersService {
   async findOne(id: string): Promise<UserResponseDto> {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
-      throw new Error('User not found');
+      throw new NotFoundException('User not found');
     }
     return this.toDto(user);
   }
@@ -52,7 +56,12 @@ export class UsersService {
     await this.prisma.user.update({ where: { id }, data: { passwordHash } });
   }
 
-  async findAll(query: { page?: number; pageSize?: number; limit?: number; search?: string }): Promise<{
+  async findAll(query: {
+    page?: number;
+    pageSize?: number;
+    limit?: number;
+    search?: string;
+  }): Promise<{
     data: UserResponseDto[];
     total: number;
     page: number;
@@ -89,6 +98,11 @@ export class UsersService {
   }
 
   async updateStatus(id: string, status: UserStatus): Promise<UserResponseDto> {
+    const existingUser = await this.prisma.user.findUnique({ where: { id } });
+    if (!existingUser) {
+      throw new NotFoundException('User not found');
+    }
+
     const user = await this.prisma.user.update({
       where: { id },
       data: { status },

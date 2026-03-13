@@ -1,4 +1,12 @@
-import { IsOptional, IsString, MaxLength, IsUrl, MinLength, IsEmail } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  MaxLength,
+  IsUrl,
+  MinLength,
+  IsEmail,
+} from 'class-validator';
+import { PASSWORD_MIN_LENGTH } from '@interviewcoach/shared';
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -14,10 +22,10 @@ export class UpdateProfileDto {
 
 export class ChangePasswordDto {
   @IsString()
-  @MinLength(6)
+  @MinLength(PASSWORD_MIN_LENGTH)
   currentPassword: string;
 
   @IsString()
-  @MinLength(6)
+  @MinLength(PASSWORD_MIN_LENGTH)
   newPassword: string;
 }
