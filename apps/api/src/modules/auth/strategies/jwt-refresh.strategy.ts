@@ -39,11 +39,14 @@ export class JwtRefreshStrategy extends PassportStrategy(
   'jwt-refresh',
 ) {
   constructor(config: ConfigService) {
+    const secret = config.get<string>('JWT_REFRESH_SECRET');
+    if (!secret) {
+      throw new Error('JWT_REFRESH_SECRET environment variable is not set');
+    }
     super({
       jwtFromRequest: extractRefreshToken,
       ignoreExpiration: false,
-      secretOrKey:
-        config.get<string>('JWT_REFRESH_SECRET') || 'default-refresh-secret',
+      secretOrKey: secret,
       passReqToCallback: true,
     } as any);
   }

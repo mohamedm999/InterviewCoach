@@ -1,5 +1,10 @@
 import { IsEmail, IsString, MinLength, Matches } from 'class-validator';
-import { RegisterDto as SharedRegisterDto } from '@interviewcoach/shared';
+import {
+  PASSWORD_COMPLEXITY_MESSAGE,
+  PASSWORD_COMPLEXITY_REGEX,
+  PASSWORD_MIN_LENGTH,
+  RegisterDto as SharedRegisterDto,
+} from '@interviewcoach/shared';
 
 export class RegisterDto implements SharedRegisterDto {
   @IsEmail()
@@ -12,9 +17,9 @@ export class RegisterDto implements SharedRegisterDto {
   lastName: string;
 
   @IsString()
-  @MinLength(8)
-  @Matches(/(?=.*[A-Z])(?=.*[0-9])/, {
-    message: 'Password must contain at least 1 uppercase letter and 1 number',
+  @MinLength(PASSWORD_MIN_LENGTH)
+  @Matches(PASSWORD_COMPLEXITY_REGEX, {
+    message: PASSWORD_COMPLEXITY_MESSAGE,
   })
   password: string;
 }

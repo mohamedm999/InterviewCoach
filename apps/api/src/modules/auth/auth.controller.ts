@@ -4,27 +4,41 @@ import {
   Body,
   HttpCode,
   HttpStatus,
-  UseGuards,
   Req,
   Res,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 import { AuditLog } from '../../common/decorators/audit-log.decorator';
 import { Request, Response } from 'express';
 import { AuthSessionResult } from './auth.types';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  private getCookieSecurity() {
+    const isProduction =
+      (this.configService.get<string>('nodeEnv') || 'development') ===
+      'production';
+    return {
+      isProduction,
+      sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax',
+    };
+  }
 
   private setSessionCookies(res: Response, session: AuthSessionResult) {
-    const isProduction = process.env.NODE_ENV === 'production';
-    const sameSite = isProduction ? 'none' : 'lax';
+    const { isProduction, sameSite } = this.getCookieSecurity();
 
     res.cookie('accessToken', session.accessToken, {
       httpOnly: true,
@@ -44,8 +58,7 @@ export class AuthController {
   }
 
   private clearSessionCookies(res: Response) {
-    const isProduction = process.env.NODE_ENV === 'production';
-    const sameSite = isProduction ? 'none' : 'lax';
+    const { isProduction, sameSite } = this.getCookieSecurity();
 
     res.clearCookie('accessToken', {
       httpOnly: true,
@@ -125,25 +138,23 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
   @AuditLog('USER_LOGOUT', 'User')
   async logout(
-    @Req() req,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
     @Body() body: { refreshToken?: string },
   ) {
-    await this.authService.logout(
-      req.user.userId,
-      body.refreshToken || this.getCookieValue(req as Request, 'refreshToken'),
-    );
+    const refreshToken =
+      body.refreshToken || this.getCookieValue(req, 'refreshToken');
+    await this.authService.logoutByRefreshToken(refreshToken);
     this.clearSessionCookies(res);
     return { message: 'Logged out successfully' };
   }
 
   @Post('request-password-reset')
   @HttpCode(HttpStatus.OK)
-  async requestPasswordReset(@Body() body: { email: string }) {
-    await this.authService.requestPasswordReset(body.email);
+  async requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+    await this.authService.requestPasswordReset(dto.email);
     return {
       message:
         'If an account with that email exists, a reset link has been sent.',
@@ -151,14 +162,16 @@ export class AuthController {
   }
 
   @Post('reset-password')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async resetPassword(@Body() body: { token: string; newPassword: string }) {
-    await this.authService.resetPassword(body.token, body.newPassword);
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.authService.resetPassword(dto.token, dto.newPassword);
+    return { message: 'Password reset successfully' };
   }
 
   @Post('verify-email')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async verifyEmail(@Body() body: { token: string }) {
-    await this.authService.verifyEmail(body.token);
+  @HttpCode(HttpStatus.OK)
+  async verifyEmail(@Body() dto: VerifyEmailDto) {
+    await this.authService.verifyEmail(dto.token);
+    return { message: 'Email verified successfully' };
   }
 }

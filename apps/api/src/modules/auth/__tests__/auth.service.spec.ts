@@ -311,9 +311,9 @@ describe('AuthService', () => {
         }),
       );
 
-      expect(mockLoginAttemptTrackerService.recordFailedAttempt).toHaveBeenCalledWith(
-        loginDto.email,
-      );
+      expect(
+        mockLoginAttemptTrackerService.recordFailedAttempt,
+      ).toHaveBeenCalledWith(loginDto.email);
     });
 
     it('should throw unauthorized exception if user not found', async () => {

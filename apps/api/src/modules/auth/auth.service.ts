@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
   BadRequestException,
@@ -26,6 +27,8 @@ interface JwtPayload {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
@@ -77,7 +80,11 @@ export class AuthService {
     });
     this.mailService
       .sendVerificationEmail(user.email, verToken)
-      .catch(() => {});
+      .catch((err) =>
+        this.logger.error(
+          `Failed to send verification email to ${user.email}: ${err?.message}`,
+        ),
+      );
 
     return {
       user: {
@@ -154,7 +161,11 @@ export class AuthService {
     });
 
     // 6. Generate tokens and persist refresh token
-    const tokens = await this.generateTokens(updatedUser.id, updatedUser.email, updatedUser.role);
+    const tokens = await this.generateTokens(
+      updatedUser.id,
+      updatedUser.email,
+      updatedUser.role,
+    );
     await this.persistRefreshToken(updatedUser.id, tokens.refreshToken);
 
     return {
@@ -213,11 +224,7 @@ export class AuthService {
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
       });
-      if (
-        !user ||
-        user.status === 'SUSPENDED' ||
-        user.status === 'BANNED'
-      ) {
+      if (!user || user.status === 'SUSPENDED' || user.status === 'BANNED') {
         throw new UnauthorizedException('User not found or suspended');
       }
 
@@ -272,7 +279,13 @@ export class AuthService {
     await this.prisma.passwordResetToken.create({
       data: { userId: user.id, token, expiresAt },
     });
-    await this.mailService.sendPasswordResetEmail(user.email, token);
+    await this.mailService
+      .sendPasswordResetEmail(user.email, token)
+      .catch((err) =>
+        this.logger.error(
+          `Failed to send password reset email to ${user.email}: ${err?.message}`,
+        ),
+      );
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
@@ -306,6 +319,20 @@ export class AuthService {
         where: { userId, isRevoked: false },
         data: { isRevoked: true },
       });
+    }
+  }
+
+  // ─── Logout by Refresh Token ─────────────────────────────────────────────────
+
+  async logoutByRefreshToken(refreshToken?: string): Promise<void> {
+    if (!refreshToken) return;
+    try {
+      const payload = this.jwtService.decode(refreshToken);
+      if (payload?.sub) {
+        await this.logout(payload.sub, refreshToken);
+      }
+    } catch {
+      // Ignore decode errors — cookies will still be cleared
     }
   }
 
