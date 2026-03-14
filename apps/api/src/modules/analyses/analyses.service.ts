@@ -3,7 +3,12 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
+import {
+  MAX_PITCH_LENGTH,
+  MIN_PITCH_LENGTH,
+} from '@interviewcoach/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAnalysisDto } from './dto/create-analysis.dto';
 import { AnalysisQueryDto } from './dto/analysis-query.dto';
@@ -14,6 +19,8 @@ import { AnalysesGateway } from './analyses.gateway';
 import { Role, Analysis, Recommendation } from '@prisma/client';
 import { createHash } from 'crypto';
 import { sanitizeInput } from '../../common/utils/sanitizer';
+import { activeAnalysisWhere } from './analysis.where';
+import { LlmProviderUnavailableError } from './llm-provider.error';
 
 type AnalysisWithRecommendations = Analysis & {
   recommendations: Recommendation[];
@@ -33,6 +40,8 @@ interface AnalysisThresholds {
 
 @Injectable()
 export class AnalysesService {
+  private readonly logger = new Logger(AnalysesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly engine: AnalysisEngineService,
@@ -49,6 +58,16 @@ export class AnalysesService {
     // Validate input length
     if (!dto.content || dto.content.trim().length === 0) {
       throw new BadRequestException('Content cannot be empty');
+    }
+    if (dto.content.length < MIN_PITCH_LENGTH) {
+      throw new BadRequestException(
+        `Content must be at least ${MIN_PITCH_LENGTH} characters`,
+      );
+    }
+    if (dto.content.length > MAX_PITCH_LENGTH) {
+      throw new BadRequestException(
+        `Content must be at most ${MAX_PITCH_LENGTH} characters`,
+      );
     }
 
     // Use transaction to ensure data consistency
@@ -92,11 +111,13 @@ export class AnalysesService {
 
       // 7. Check for duplicate analysis (same user + same hash)
       const existingAnalysis = await tx.analysis.findFirst({
-        where: { userId, inputTextHash, deletedAt: null },
+        where: activeAnalysisWhere({ userId, inputTextHash }),
         orderBy: { versionIndex: 'desc' },
       });
 
-      const versionIndex = existingAnalysis ? existingAnalysis.versionIndex + 1 : 0;
+      const versionIndex = existingAnalysis
+        ? existingAnalysis.versionIndex + 1
+        : 0;
 
       // 8. Create Analysis record
       const analysis = await tx.analysis.create({
@@ -143,7 +164,7 @@ export class AnalysesService {
         where: { analysisId: analysis.id },
       });
 
-      // 12. Generate AI coaching feedback (outside transaction for performance)
+      // 12. Generate AI coaching feedback
       let coachingFeedback: string | undefined;
       try {
         coachingFeedback = await this.llm.generateCoaching(
@@ -152,8 +173,27 @@ export class AnalysesService {
           { tone, confidence, readability, impact, global },
         );
       } catch (error) {
-        console.error('Failed to generate coaching feedback:', error);
-        coachingFeedback = undefined;
+        if (error instanceof LlmProviderUnavailableError) {
+          this.logger.warn(
+            `Skipping LLM coaching feedback: ${error.message}`,
+          );
+          coachingFeedback = undefined;
+        } else {
+          throw error;
+        }
+      }
+
+      // 12a. Persist coaching feedback to modelMeta
+      if (coachingFeedback) {
+        await tx.analysis.update({
+          where: { id: analysis.id },
+          data: {
+            modelMeta: {
+              ...(analysis.modelMeta as object),
+              coachingFeedback,
+            },
+          },
+        });
       }
 
       // 13. Broadcast completion via WebSocket
@@ -195,10 +235,7 @@ export class AnalysesService {
     requestingUserRole: Role,
   ): Promise<AnalysisResponseDto> {
     const analysis = await this.prisma.analysis.findFirst({
-      where: { 
-        id,
-        deletedAt: null, // Exclude soft-deleted analyses
-      },
+      where: activeAnalysisWhere({ id }),
       include: { recommendations: true },
     });
     if (!analysis) {
@@ -236,8 +273,7 @@ export class AnalysesService {
     if (query.from) dateFilter.gte = new Date(query.from);
     if (query.to) dateFilter.lte = new Date(query.to);
 
-    const where = {
-      deletedAt: null, // Exclude soft-deleted analyses
+    const where = activeAnalysisWhere({
       ...(requestingUserRole !== Role.ADMIN
         ? { userId: requestingUserId }
         : query.userId
@@ -245,7 +281,7 @@ export class AnalysesService {
           : {}),
       ...(query.context ? { context: query.context } : {}),
       ...(Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {}),
-    };
+    });
 
     const [analyses, total] = await Promise.all([
       this.prisma.analysis.findMany({
@@ -274,10 +310,7 @@ export class AnalysesService {
     requestingUserRole: Role,
   ): Promise<void> {
     const analysis = await this.prisma.analysis.findFirst({
-      where: {
-        id,
-        deletedAt: null,
-      },
+      where: activeAnalysisWhere({ id }),
     });
 
     if (!analysis) {
@@ -289,7 +322,9 @@ export class AnalysesService {
       analysis.userId !== requestingUserId &&
       requestingUserRole !== Role.ADMIN
     ) {
-      throw new ForbiddenException('You do not have permission to delete this analysis');
+      throw new ForbiddenException(
+        'You do not have permission to delete this analysis',
+      );
     }
 
     await this.prisma.analysis.update({

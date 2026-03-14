@@ -32,13 +32,13 @@ export class ConfidenceStrategy {
     const lowerText = text.toLowerCase();
 
     // Count confident phrases
-    confidentPhrases.forEach(phrase => {
+    confidentPhrases.forEach((phrase) => {
       const count = (lowerText.match(new RegExp(phrase, 'g')) || []).length;
       score += count * 5;
     });
 
     // Count uncertain phrases
-    uncertainPhrases.forEach(phrase => {
+    uncertainPhrases.forEach((phrase) => {
       const count = (lowerText.match(new RegExp(phrase, 'g')) || []).length;
       score -= count * 5;
     });

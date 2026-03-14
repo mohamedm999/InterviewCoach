@@ -54,7 +54,9 @@ describe('AnalysesService', () => {
         {
           provide: AnalysisEngineService,
           useValue: {
-            normalizeText: jest.fn().mockImplementation((text: string) => text.trim()),
+            normalizeText: jest
+              .fn()
+              .mockImplementation((text: string) => text.trim()),
             computeReadabilityScore: jest.fn().mockReturnValue(85),
             computeToneScore: jest.fn().mockReturnValue(80),
             computeConfidenceScore: jest.fn().mockReturnValue(70),
@@ -66,7 +68,9 @@ describe('AnalysesService', () => {
         {
           provide: LlmCoachingService,
           useValue: {
-            generateCoaching: jest.fn().mockResolvedValue('Mock AI coaching feedback.'),
+            generateCoaching: jest
+              .fn()
+              .mockResolvedValue('Mock AI coaching feedback.'),
           },
         },
         {
@@ -92,7 +96,10 @@ describe('AnalysesService', () => {
 
   describe('create', () => {
     const userId = 'test-user-id';
-    const dto: CreateAnalysisDto = { content: 'Test pitch text', context: 'FORMAL' as Context };
+    const dto: CreateAnalysisDto = {
+      content: 'Test pitch text',
+      context: 'FORMAL' as Context,
+    };
     const mockRecommendations = [
       {
         id: 'rec-id',
@@ -125,8 +132,9 @@ describe('AnalysesService', () => {
       createdAnalysis?: any;
       createdRecommendations?: any[];
     } = {}) => {
-      jest.spyOn(prismaService, '$transaction').mockImplementation(
-        async (callback: any) =>
+      jest
+        .spyOn(prismaService, '$transaction')
+        .mockImplementation(async (callback: any) =>
           callback({
             analysisConfig: {
               findFirst: jest.fn().mockResolvedValue(mockConfig),
@@ -136,11 +144,13 @@ describe('AnalysesService', () => {
               create: jest.fn().mockResolvedValue(createdAnalysis),
             },
             recommendation: {
-              createMany: jest.fn().mockResolvedValue({ count: createdRecommendations.length }),
+              createMany: jest
+                .fn()
+                .mockResolvedValue({ count: createdRecommendations.length }),
               findMany: jest.fn().mockResolvedValue(createdRecommendations),
             },
           }),
-      );
+        );
     };
 
     it('should create analysis with correct versionIndex', async () => {
@@ -181,7 +191,9 @@ describe('AnalysesService', () => {
           examples: [],
         },
       ];
-      jest.spyOn(analysisEngineService, 'generateRecommendations').mockReturnValue(mockRecs);
+      jest
+        .spyOn(analysisEngineService, 'generateRecommendations')
+        .mockReturnValue(mockRecs);
       mockTransaction({
         createdRecommendations: [
           { id: 'rec-id', analysisId: 'analysis-id', ...mockRecs[0] },
@@ -197,27 +209,43 @@ describe('AnalysesService', () => {
 
   describe('findOne', () => {
     it('should return analysis for the owner', async () => {
-      jest.spyOn(prismaService.analysis, 'findFirst').mockResolvedValue(mockAnalysis as any);
-      const result = await service.findOne('analysis-id', 'test-user-id', Role.USER);
+      jest
+        .spyOn(prismaService.analysis, 'findFirst')
+        .mockResolvedValue(mockAnalysis as any);
+      const result = await service.findOne(
+        'analysis-id',
+        'test-user-id',
+        Role.USER,
+      );
       expect(result.analysisId).toBe('analysis-id');
     });
 
     it('should allow ADMIN to access any analysis', async () => {
-      jest.spyOn(prismaService.analysis, 'findFirst').mockResolvedValue(mockAnalysis as any);
-      const result = await service.findOne('analysis-id', 'admin-user-id', Role.ADMIN);
+      jest
+        .spyOn(prismaService.analysis, 'findFirst')
+        .mockResolvedValue(mockAnalysis as any);
+      const result = await service.findOne(
+        'analysis-id',
+        'admin-user-id',
+        Role.ADMIN,
+      );
       expect(result.analysisId).toBe('analysis-id');
     });
 
     it('should throw NotFoundException when analysis does not exist', async () => {
       jest.spyOn(prismaService.analysis, 'findFirst').mockResolvedValue(null);
-      await expect(service.findOne('non-existent', 'test-user-id', Role.USER))
-        .rejects.toThrow(NotFoundException);
+      await expect(
+        service.findOne('non-existent', 'test-user-id', Role.USER),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw ForbiddenException when non-owner USER tries to access', async () => {
-      jest.spyOn(prismaService.analysis, 'findFirst').mockResolvedValue(mockAnalysis as any);
-      await expect(service.findOne('analysis-id', 'other-user-id', Role.USER))
-        .rejects.toThrow(ForbiddenException);
+      jest
+        .spyOn(prismaService.analysis, 'findFirst')
+        .mockResolvedValue(mockAnalysis as any);
+      await expect(
+        service.findOne('analysis-id', 'other-user-id', Role.USER),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -225,10 +253,15 @@ describe('AnalysesService', () => {
 
   describe('findAll', () => {
     it('should return paginated list for a regular user', async () => {
-      jest.spyOn(prismaService.analysis, 'findMany').mockResolvedValue([mockAnalysis] as any);
+      jest
+        .spyOn(prismaService.analysis, 'findMany')
+        .mockResolvedValue([mockAnalysis] as any);
       jest.spyOn(prismaService.analysis, 'count').mockResolvedValue(1);
 
-      const result = await service.findAll('test-user-id', Role.USER, { page: 1, pageSize: 20 });
+      const result = await service.findAll('test-user-id', Role.USER, {
+        page: 1,
+        pageSize: 20,
+      });
       expect(result.data).toHaveLength(1);
       expect(result.total).toBe(1);
       expect(result.page).toBe(1);
@@ -236,11 +269,20 @@ describe('AnalysesService', () => {
     });
 
     it('should allow ADMIN to see all analyses', async () => {
-      const analysis2 = { ...mockAnalysis, id: 'analysis-id-2', userId: 'other-user' };
-      jest.spyOn(prismaService.analysis, 'findMany').mockResolvedValue([mockAnalysis, analysis2] as any);
+      const analysis2 = {
+        ...mockAnalysis,
+        id: 'analysis-id-2',
+        userId: 'other-user',
+      };
+      jest
+        .spyOn(prismaService.analysis, 'findMany')
+        .mockResolvedValue([mockAnalysis, analysis2] as any);
       jest.spyOn(prismaService.analysis, 'count').mockResolvedValue(2);
 
-      const result = await service.findAll('admin-user-id', Role.ADMIN, { page: 1, pageSize: 20 });
+      const result = await service.findAll('admin-user-id', Role.ADMIN, {
+        page: 1,
+        pageSize: 20,
+      });
       expect(result.total).toBe(2);
     });
 
@@ -248,7 +290,10 @@ describe('AnalysesService', () => {
       jest.spyOn(prismaService.analysis, 'findMany').mockResolvedValue([]);
       jest.spyOn(prismaService.analysis, 'count').mockResolvedValue(50);
 
-      const result = await service.findAll('test-user-id', Role.USER, { page: 3, pageSize: 10 });
+      const result = await service.findAll('test-user-id', Role.USER, {
+        page: 3,
+        pageSize: 10,
+      });
       expect(result.page).toBe(3);
       expect(result.pageSize).toBe(10);
       expect(prismaService.analysis.findMany).toHaveBeenCalledWith(
@@ -260,7 +305,10 @@ describe('AnalysesService', () => {
       jest.spyOn(prismaService.analysis, 'findMany').mockResolvedValue([]);
       jest.spyOn(prismaService.analysis, 'count').mockResolvedValue(0);
 
-      const result = await service.findAll('test-user-id', Role.USER, { page: 1, pageSize: 20 });
+      const result = await service.findAll('test-user-id', Role.USER, {
+        page: 1,
+        pageSize: 20,
+      });
       expect(result.data).toHaveLength(0);
       expect(result.total).toBe(0);
     });

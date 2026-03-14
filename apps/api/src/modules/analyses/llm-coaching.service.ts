@@ -1,24 +1,66 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
-import { AnalysisResponseDto } from './dto/analysis-response.dto';
 import { Context } from '@prisma/client';
+import { LlmProviderUnavailableError } from './llm-provider.error';
+
+interface CoachingScores {
+  global: number;
+  tone: number;
+  confidence: number;
+  readability: number;
+  impact: number;
+}
+
+interface OpenRouterChatResponse {
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+  error?: {
+    message?: string;
+  };
+}
 
 @Injectable()
 export class LlmCoachingService {
   private readonly logger = new Logger(LlmCoachingService.name);
-  private openai: OpenAI | null = null;
-  private isConfigured = false;
+  private readonly enabled: boolean;
+  private readonly provider: 'openrouter';
+  private readonly model: string;
+  private readonly timeoutMs: number;
+  private readonly openRouterApiKey?: string;
+  private readonly openRouterBaseUrl: string;
+  private readonly appUrl: string;
+  private readonly appName: string;
 
   constructor(private configService: ConfigService) {
-    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
-    if (apiKey) {
-      this.openai = new OpenAI({ apiKey });
-      this.isConfigured = true;
-      this.logger.log('OpenAI client initialized for LLM coaching.');
-    } else {
+    this.enabled = this.configService.get<boolean>('llm.enabled') ?? false;
+    this.provider =
+      this.configService.get<'openrouter'>('llm.provider') ?? 'openrouter';
+    this.model =
+      this.configService.get<string>('llm.model') || 'openai/gpt-4o-mini';
+    this.timeoutMs = this.configService.get<number>('llm.timeoutMs') ?? 10000;
+    this.openRouterApiKey =
+      this.configService.get<string>('llm.openrouter.apiKey') ||
+      this.configService.get<string>('OPENROUTER_API_KEY');
+    this.openRouterBaseUrl =
+      this.configService.get<string>('llm.openrouter.baseUrl') ||
+      'https://openrouter.ai/api/v1';
+    this.appUrl =
+      this.configService.get<string>('APP_URL') || 'http://localhost:3001';
+    this.appName =
+      this.configService.get<string>('APP_NAME') || 'InterviewCoach';
+
+    if (!this.enabled) {
+      this.logger.warn('LLM coaching is disabled by configuration.');
+    } else if (!this.openRouterApiKey) {
       this.logger.warn(
-        'OPENAI_API_KEY not found in environment variables. Falling back to mock coaching mode.',
+        'LLM coaching is enabled but OPENROUTER_API_KEY is not configured.',
+      );
+    } else {
+      this.logger.log(
+        `LLM coaching configured with ${this.provider}:${this.model}.`,
       );
     }
   }
@@ -26,44 +68,84 @@ export class LlmCoachingService {
   async generateCoaching(
     inputText: string,
     context: Context,
-    scores: { global: number; tone: number; confidence: number; readability: number; impact: number },
+    scores: CoachingScores,
   ): Promise<string> {
-    if (!this.isConfigured || !this.openai) {
-      return this.getMockCoaching(context, scores.global);
+    if (!this.enabled) {
+      throw new LlmProviderUnavailableError('LLM coaching is disabled');
+    }
+
+    if (this.provider !== 'openrouter') {
+      throw new LlmProviderUnavailableError(
+        `Unsupported LLM provider: ${this.provider}`,
+      );
+    }
+
+    if (!this.openRouterApiKey) {
+      throw new LlmProviderUnavailableError(
+        'OpenRouter API key is not configured',
+      );
     }
 
     try {
-      this.logger.debug('Calling OpenAI to generate coaching feedback...');
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'system',
-            content: `You are an expert interview coach analyzing a candidate's response in a ${context.toLowerCase()} context. Given their response and their rule-based scores, provide one concise, encouraging paragraph of qualitative feedback on how they can improve.`
+      const response = await fetch(
+        `${this.openRouterBaseUrl}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.openRouterApiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': this.appUrl,
+            'X-Title': this.appName,
           },
-          {
-            role: 'user',
-            content: `Response:\n"${inputText}"\n\nScores (out of 100):\nOverall: ${scores.global}\nTone: ${scores.tone}\nConfidence: ${scores.confidence}\nReadability: ${scores.readability}\nImpact: ${scores.impact}`
-          }
-        ],
-        max_tokens: 150,
-        temperature: 0.7,
-      });
+          body: JSON.stringify({
+            model: this.model,
+            messages: [
+              {
+                role: 'system',
+                content: `You are an expert interview coach analyzing a candidate's response in a ${context.toLowerCase()} context. Given their response and their rule-based scores, provide one concise, encouraging paragraph of qualitative feedback on how they can improve.`,
+              },
+              {
+                role: 'user',
+                content: `Response:\n"${inputText}"\n\nScores (out of 100):\nOverall: ${scores.global}\nTone: ${scores.tone}\nConfidence: ${scores.confidence}\nReadability: ${scores.readability}\nImpact: ${scores.impact}`,
+              },
+            ],
+            temperature: 0.7,
+            max_tokens: 150,
+          }),
+          signal: AbortSignal.timeout(this.timeoutMs),
+        },
+      );
 
-      return response.choices[0]?.message?.content || this.getMockCoaching(context, scores.global);
+      const payload = (await response.json()) as OpenRouterChatResponse;
+
+      if (!response.ok) {
+        throw new LlmProviderUnavailableError(
+          payload.error?.message || 'OpenRouter request failed',
+          payload,
+        );
+      }
+
+      const content = payload.choices?.[0]?.message?.content?.trim();
+      if (!content) {
+        throw new LlmProviderUnavailableError(
+          'OpenRouter returned an empty coaching response',
+          payload,
+        );
+      }
+
+      return content;
     } catch (error) {
-      this.logger.error('Failed to generate LLM coaching', error);
-      return this.getMockCoaching(context, scores.global);
-    }
-  }
+      if (error instanceof LlmProviderUnavailableError) {
+        throw error;
+      }
 
-  private getMockCoaching(context: Context, globalScore: number): string {
-    if (globalScore >= 80) {
-      return `This is a strong response for a ${context.toLowerCase()} setting. Keep up the good work! You convey confidence and clarity. (Note: Add OPENAI_API_KEY to .env for AI-generated feedback).`;
-    } else if (globalScore >= 60) {
-      return `Your response shows potential for a ${context.toLowerCase()} interview, but there's room for improvement. Try to focus on stronger action verbs and clearer sentences. (Note: Add OPENAI_API_KEY to .env for AI-generated feedback).`;
-    } else {
-      return `Your response needs some work to fit a ${context.toLowerCase()} interview context. We recommend breaking down your points and practicing your delivery. (Note: Add OPENAI_API_KEY to .env for AI-generated feedback).`;
+      this.logger.warn(
+        `OpenRouter coaching request failed for model ${this.model}`,
+      );
+      throw new LlmProviderUnavailableError(
+        'OpenRouter coaching is unavailable',
+        error,
+      );
     }
   }
 }

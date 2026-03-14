@@ -9,32 +9,64 @@ export class ToneStrategy {
     let score = 50; // Base score
 
     // Context-specific keywords
-    const contextKeywords: Record<Context, { positive: string[]; negative: string[] }> = {
+    const contextKeywords: Record<
+      Context,
+      { positive: string[]; negative: string[] }
+    > = {
       FORMAL: {
-        positive: ['professional', 'respectfully', 'sincerely', 'appreciate', 'grateful', 'honored'],
+        positive: [
+          'professional',
+          'respectfully',
+          'sincerely',
+          'appreciate',
+          'grateful',
+          'honored',
+        ],
         negative: ['yeah', 'gonna', 'wanna', 'kinda', 'sorta', 'stuff'],
       },
       STARTUP: {
-        positive: ['innovative', 'disrupt', 'scale', 'growth', 'agile', 'pivot', 'passionate'],
+        positive: [
+          'innovative',
+          'disrupt',
+          'scale',
+          'growth',
+          'agile',
+          'pivot',
+          'passionate',
+        ],
         negative: ['traditional', 'slow', 'bureaucratic', 'rigid'],
       },
       TECHNICAL: {
-        positive: ['implement', 'optimize', 'architecture', 'scalable', 'efficient', 'robust'],
+        positive: [
+          'implement',
+          'optimize',
+          'architecture',
+          'scalable',
+          'efficient',
+          'robust',
+        ],
         negative: ['maybe', 'probably', 'guess', 'think'],
       },
       CREATIVE: {
-        positive: ['creative', 'innovative', 'unique', 'original', 'inspiring', 'vision'],
+        positive: [
+          'creative',
+          'innovative',
+          'unique',
+          'original',
+          'inspiring',
+          'vision',
+        ],
         negative: ['boring', 'standard', 'typical', 'ordinary'],
       },
     };
 
     const keywords = contextKeywords[context];
-    
+
     // Count positive and negative keywords
     let positiveCount = 0;
     let negativeCount = 0;
 
-    words.forEach(word => {
+    words.forEach((word) => {
       if (keywords.positive.includes(word)) positiveCount++;
       if (keywords.negative.includes(word)) negativeCount++;
     });

@@ -2,12 +2,15 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
   Param,
   Query,
   UseGuards,
   Req,
   ParseUUIDPipe,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AnalysesService } from './analyses.service';
@@ -52,5 +55,16 @@ export class AnalysesController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<AnalysisResponseDto> {
     return this.analysesService.findOne(id, req.user.userId, req.user.role);
+  }
+
+  // DELETE /analyses/:id
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  async softDelete(
+    @Req() req,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    await this.analysesService.softDelete(id, req.user.userId, req.user.role);
+    return { message: 'Analysis deleted successfully' };
   }
 }

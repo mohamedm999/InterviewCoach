@@ -3,8 +3,8 @@ import { Injectable } from '@nestjs/common';
 @Injectable()
 export class ReadabilityStrategy {
   compute(text: string): number {
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-    const words = text.split(/\s+/).filter(w => w.length > 0);
+    const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+    const words = text.split(/\s+/).filter((w) => w.length > 0);
     const syllables = this.countSyllables(text);
 
     if (sentences.length === 0 || words.length === 0) {
@@ -15,7 +15,8 @@ export class ReadabilityStrategy {
     const avgWordsPerSentence = words.length / sentences.length;
     const avgSyllablesPerWord = syllables / words.length;
 
-    const fleschScore = 206.835 - 1.015 * avgWordsPerSentence - 84.6 * avgSyllablesPerWord;
+    const fleschScore =
+      206.835 - 1.015 * avgWordsPerSentence - 84.6 * avgSyllablesPerWord;
 
     // Convert Flesch score (0-100) to our score (0-100)
     // Flesch: 90-100 = Very Easy, 0-30 = Very Difficult
@@ -40,7 +41,7 @@ export class ReadabilityStrategy {
     const words = text.toLowerCase().split(/\s+/);
     let totalSyllables = 0;
 
-    words.forEach(word => {
+    words.forEach((word) => {
       // Remove non-alphabetic characters
       word = word.replace(/[^a-z]/g, '');
       if (word.length === 0) return;

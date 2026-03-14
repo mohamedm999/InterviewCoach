@@ -34,7 +34,7 @@ export class ImpactStrategy {
 
     // Count impact keywords
     let impactCount = 0;
-    impactKeywords.forEach(keyword => {
+    impactKeywords.forEach((keyword) => {
       if (words.includes(keyword)) {
         impactCount++;
       }
@@ -43,14 +43,21 @@ export class ImpactStrategy {
     score += impactCount * 3;
 
     // Check for quantifiable results (numbers/percentages)
-    const numberMatches = text.match(/\d+%|\d+\s*(percent|million|thousand|billion)/gi);
+    const numberMatches = text.match(
+      /\d+%|\d+\s*(percent|million|thousand|billion)/gi,
+    );
     if (numberMatches) {
       score += numberMatches.length * 5;
     }
 
     // Check for specific examples (use of "for example", "such as", etc.)
-    const examplePhrases = ['for example', 'such as', 'for instance', 'specifically'];
-    examplePhrases.forEach(phrase => {
+    const examplePhrases = [
+      'for example',
+      'such as',
+      'for instance',
+      'specifically',
+    ];
+    examplePhrases.forEach((phrase) => {
       if (lowerText.includes(phrase)) {
         score += 5;
       }
