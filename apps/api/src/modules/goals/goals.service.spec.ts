@@ -100,7 +100,11 @@ describe('GoalsService', () => {
       const createDto = {
         targetScore: 90,
       };
-      const goalWithoutOptionals = { ...mockGoal, category: null, deadline: null };
+      const goalWithoutOptionals = {
+        ...mockGoal,
+        category: null,
+        deadline: null,
+      };
       mockPrismaService.userGoal.create.mockResolvedValue(goalWithoutOptionals);
 
       const result = await service.create(mockUserId, createDto);
@@ -123,7 +127,11 @@ describe('GoalsService', () => {
         targetScore: 90,
         isCompleted: true,
       };
-      const updatedGoal = { ...mockGoal, ...updateDto, completedAt: new Date() };
+      const updatedGoal = {
+        ...mockGoal,
+        ...updateDto,
+        completedAt: new Date(),
+      };
       mockPrismaService.userGoal.findUnique.mockResolvedValue(mockGoal);
       mockPrismaService.userGoal.update.mockResolvedValue(updatedGoal);
 

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateGoalDto, UpdateGoalDto } from './dto/goal.dto';
 
@@ -38,10 +42,10 @@ export class GoalsService {
       data: {
         ...(dto.targetScore !== undefined && { targetScore: dto.targetScore }),
         ...(dto.category !== undefined && { category: dto.category }),
-        ...(dto.deadline !== undefined && { 
-          deadline: dto.deadline ? new Date(dto.deadline) : null 
+        ...(dto.deadline !== undefined && {
+          deadline: dto.deadline ? new Date(dto.deadline) : null,
         }),
-        ...(dto.isCompleted !== undefined && { 
+        ...(dto.isCompleted !== undefined && {
           isCompleted: dto.isCompleted,
           completedAt: dto.isCompleted ? new Date() : null,
         }),

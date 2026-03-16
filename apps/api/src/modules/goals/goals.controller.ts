@@ -49,9 +49,9 @@ export class GoalsController {
 
   // DELETE /stats/me/goals/:id
   @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @AuditLog('USER_DELETE_GOAL', 'UserGoal')
-  async remove(@Req() req, @Param('id', ParseUUIDPipe) id: string) {
-    await this.goalsService.remove(req.user.userId, id);
+  remove(@Req() req, @Param('id', ParseUUIDPipe) id: string) {
+    return this.goalsService.remove(req.user.userId, id);
   }
 }

@@ -61,7 +61,9 @@ describe('GoalsController', () => {
       const result = await controller.findAll(mockRequest);
 
       expect(result).toEqual(mockGoals);
-      expect(mockGoalsService.findAll).toHaveBeenCalledWith(mockRequest.user.userId);
+      expect(mockGoalsService.findAll).toHaveBeenCalledWith(
+        mockRequest.user.userId,
+      );
     });
   });
 
@@ -93,7 +95,11 @@ describe('GoalsController', () => {
       const updatedGoal = { ...mockGoal, ...updateDto };
       mockGoalsService.update.mockResolvedValue(updatedGoal);
 
-      const result = await controller.update(mockRequest, mockGoal.id, updateDto);
+      const result = await controller.update(
+        mockRequest,
+        mockGoal.id,
+        updateDto,
+      );
 
       expect(result).toEqual(updatedGoal);
       expect(mockGoalsService.update).toHaveBeenCalledWith(
@@ -106,7 +112,9 @@ describe('GoalsController', () => {
 
   describe('remove', () => {
     it('should delete a goal', async () => {
-      mockGoalsService.remove.mockResolvedValue({ message: 'Goal deleted successfully' });
+      mockGoalsService.remove.mockResolvedValue({
+        message: 'Goal deleted successfully',
+      });
 
       await controller.remove(mockRequest, mockGoal.id);
 
