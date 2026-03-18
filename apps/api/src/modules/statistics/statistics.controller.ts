@@ -36,9 +36,14 @@ export class StatisticsController {
   // GET /stats/me/export.csv
   @Get('stats/me/export')
   async exportCsv(@Req() req, @Res() res: Response) {
-    const csv = await this.statisticsService.exportUserAnalysesCsv(req.user.userId);
+    const csv = await this.statisticsService.exportUserAnalysesCsv(
+      req.user.userId,
+    );
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="interview-coach-analyses.csv"');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="interview-coach-analyses.csv"',
+    );
     res.send(csv);
   }
 
@@ -47,5 +52,4 @@ export class StatisticsController {
   getPeerStatistics(@Req() req) {
     return this.statisticsService.getPeerStatistics(req.user.userId);
   }
-
 }

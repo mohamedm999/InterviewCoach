@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Role } from '@prisma/client';
+import { activeAnalysisWhere } from '../analyses/analysis.where';
 
 @Injectable()
 export class RecommendationsService {
@@ -15,8 +16,8 @@ export class RecommendationsService {
     requestingUserId: string,
     requestingUserRole: Role,
   ) {
-    const analysis = await this.prisma.analysis.findUnique({
-      where: { id: analysisId },
+    const analysis = await this.prisma.analysis.findFirst({
+      where: activeAnalysisWhere({ id: analysisId }),
       select: { userId: true },
     });
 

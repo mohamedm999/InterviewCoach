@@ -1,14 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { Context } from '@prisma/client';
+import type {
+  AdminOverviewData,
+  ByContextEntry,
+  PeerStats,
+  UserProgressionResponse,
+} from '@interviewcoach/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { activeAnalysisWhere } from '../analyses/analysis.where';
 
 @Injectable()
 export class StatisticsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getUserProgression(userId: string) {
+  async getUserProgression(userId: string): Promise<UserProgressionResponse> {
     const analyses = await this.prisma.analysis.findMany({
-      where: { userId },
+      where: activeAnalysisWhere({ userId }),
       orderBy: { createdAt: 'asc' },
       select: {
         createdAt: true,
@@ -22,7 +29,7 @@ export class StatisticsService {
 
     return {
       data: analyses.map((analysis) => ({
-        date: analysis.createdAt,
+        date: analysis.createdAt.toISOString(),
         scoreGlobal: analysis.scoreGlobal,
         scoreTone: analysis.scoreTone,
         scoreConfidence: analysis.scoreConfidence,
@@ -32,10 +39,10 @@ export class StatisticsService {
     };
   }
 
-  async getAdminOverview() {
+  async getAdminOverview(): Promise<AdminOverviewData> {
     const [totalAnalyses, totalUsers, activeUsers, allUserScores] =
       await Promise.all([
-        this.prisma.analysis.count(),
+        this.prisma.analysis.count({ where: activeAnalysisWhere() }),
         this.prisma.user.count(),
         this.prisma.user.count({ where: { status: 'ACTIVE' } }),
         this.prisma.$queryRaw<
@@ -46,17 +53,20 @@ export class StatisticsService {
           FIRST_VALUE("scoreGlobal") OVER (PARTITION BY "userId" ORDER BY "createdAt" ASC) AS "firstScore",
           FIRST_VALUE("scoreGlobal") OVER (PARTITION BY "userId" ORDER BY "createdAt" DESC) AS "lastScore"
         FROM analyses
+        WHERE "deletedAt" IS NULL
         GROUP BY "userId", "scoreGlobal", "createdAt"
       `,
       ]);
 
     const avgResult = await this.prisma.analysis.aggregate({
+      where: activeAnalysisWhere(),
       _avg: { scoreGlobal: true },
     });
     const averageScore = Math.round(avgResult._avg.scoreGlobal ?? 0);
 
     const userAnalysisCounts = await this.prisma.analysis.groupBy({
       by: ['userId'],
+      where: activeAnalysisWhere(),
       _count: { id: true },
     });
     const countMap = new Map<string, number>();
@@ -95,13 +105,13 @@ export class StatisticsService {
     };
   }
 
-  async getStatsByContext() {
+  async getStatsByContext(): Promise<Record<string, ByContextEntry>> {
     const contexts = Object.values(Context);
-    const result: Record<string, { count: number; avgScore: number }> = {};
+    const result: Record<string, ByContextEntry> = {};
 
     for (const context of contexts) {
       const aggregate = await this.prisma.analysis.aggregate({
-        where: { context },
+        where: activeAnalysisWhere({ context }),
         _count: { id: true },
         _avg: { scoreGlobal: true },
       });
@@ -117,7 +127,7 @@ export class StatisticsService {
 
   async exportUserAnalysesCsv(userId: string): Promise<string> {
     const analyses = await this.prisma.analysis.findMany({
-      where: { userId },
+      where: activeAnalysisWhere({ userId }),
       orderBy: { createdAt: 'desc' },
       include: { recommendations: true },
     });
@@ -153,10 +163,11 @@ export class StatisticsService {
     return [header, ...rows].join('\n');
   }
 
-  async getPeerStatistics(userId: string) {
-    const [userAvg, globalAgg, contextBreakdown] = await Promise.all([
+  async getPeerStatistics(userId: string): Promise<PeerStats> {
+    const [userAvg, platformAgg, myContextBreakdown, platformContextBreakdown] =
+      await Promise.all([
       this.prisma.analysis.aggregate({
-        where: { userId },
+        where: activeAnalysisWhere({ userId }),
         _avg: {
           scoreGlobal: true,
           scoreTone: true,
@@ -167,6 +178,7 @@ export class StatisticsService {
         _count: { id: true },
       }),
       this.prisma.analysis.aggregate({
+        where: activeAnalysisWhere(),
         _avg: {
           scoreGlobal: true,
           scoreTone: true,
@@ -178,6 +190,13 @@ export class StatisticsService {
       }),
       this.prisma.analysis.groupBy({
         by: ['context'],
+        where: activeAnalysisWhere({ userId }),
+        _avg: { scoreGlobal: true },
+        _count: { id: true },
+      }),
+      this.prisma.analysis.groupBy({
+        by: ['context'],
+        where: activeAnalysisWhere(),
         _avg: { scoreGlobal: true },
         _count: { id: true },
       }),
@@ -185,6 +204,7 @@ export class StatisticsService {
 
     const allUserAverages = await this.prisma.analysis.groupBy({
       by: ['userId'],
+      where: activeAnalysisWhere(),
       _avg: { scoreGlobal: true },
     });
 
@@ -206,16 +226,21 @@ export class StatisticsService {
         avgReadability: Math.round(userAvg._avg.scoreReadability ?? 0),
         avgImpact: Math.round(userAvg._avg.scoreImpact ?? 0),
       },
-      global: {
-        totalAnalyses: globalAgg._count.id,
-        avgGlobal: Math.round(globalAgg._avg.scoreGlobal ?? 0),
-        avgTone: Math.round(globalAgg._avg.scoreTone ?? 0),
-        avgConfidence: Math.round(globalAgg._avg.scoreConfidence ?? 0),
-        avgReadability: Math.round(globalAgg._avg.scoreReadability ?? 0),
-        avgImpact: Math.round(globalAgg._avg.scoreImpact ?? 0),
+      platform: {
+        totalAnalyses: platformAgg._count.id,
+        avgGlobal: Math.round(platformAgg._avg.scoreGlobal ?? 0),
+        avgTone: Math.round(platformAgg._avg.scoreTone ?? 0),
+        avgConfidence: Math.round(platformAgg._avg.scoreConfidence ?? 0),
+        avgReadability: Math.round(platformAgg._avg.scoreReadability ?? 0),
+        avgImpact: Math.round(platformAgg._avg.scoreImpact ?? 0),
       },
       percentile,
-      contextBreakdown: contextBreakdown.map((row) => ({
+      myContextBreakdown: myContextBreakdown.map((row) => ({
+        context: row.context,
+        avgScore: Math.round(row._avg.scoreGlobal ?? 0),
+        count: row._count.id,
+      })),
+      platformContextBreakdown: platformContextBreakdown.map((row) => ({
         context: row.context,
         avgScore: Math.round(row._avg.scoreGlobal ?? 0),
         count: row._count.id,
