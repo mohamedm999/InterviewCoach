@@ -1,28 +1,15 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-
-interface ConfigWeights {
-  tone: number;
-  confidence: number;
-  readability: number;
-  impact: number;
-}
-
-interface ConfigThresholds {
-  high: number;
-  medium: number;
-}
-
-interface UpdateConfigDto {
-  weights: ConfigWeights;
-  thresholds: ConfigThresholds;
-}
+import type {
+  AnalysisConfig,
+  UpdateConfigRequest,
+} from '@interviewcoach/shared';
 
 @Injectable()
 export class AdminConfigService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getConfig() {
+  async getConfig(): Promise<AnalysisConfig> {
     const config = await this.prisma.analysisConfig.findFirst();
     if (!config) {
       // Return defaults if no config exists yet
@@ -33,13 +20,13 @@ export class AdminConfigService {
     }
     return {
       id: config.id,
-      weights: config.weights,
-      thresholds: config.thresholds,
-      updatedAt: config.updatedAt,
+      weights: config.weights as unknown as AnalysisConfig['weights'],
+      thresholds: config.thresholds as unknown as AnalysisConfig['thresholds'],
+      updatedAt: config.updatedAt.toISOString(),
     };
   }
 
-  async updateConfig(dto: UpdateConfigDto) {
+  async updateConfig(dto: UpdateConfigRequest) {
     // Validate: weights sum must equal 100
     const { tone, confidence, readability, impact } = dto.weights;
     const sum = tone + confidence + readability + impact;
