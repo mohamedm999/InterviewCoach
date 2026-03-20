@@ -5,9 +5,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Role, Analysis, Recommendation } from '@prisma/client';
+import { activeAnalysisWhere } from '../analyses/analysis.where';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
-const PdfPrinter = require('pdfmake');
+const PdfPrinter = require('pdfmake/js/Printer');
 
 type AnalysisWithRelations = Analysis & {
   recommendations: Recommendation[];
@@ -23,8 +24,8 @@ export class PdfExportService {
     requestingUserId: string,
     requestingUserRole: Role,
   ): Promise<Buffer> {
-    const analysis = await this.prisma.analysis.findUnique({
-      where: { id: analysisId },
+    const analysis = await this.prisma.analysis.findFirst({
+      where: activeAnalysisWhere({ id: analysisId }),
       include: {
         recommendations: true,
         user: { select: { email: true, displayName: true } },
@@ -60,13 +61,13 @@ export class PdfExportService {
 
     const recommendationRows = analysis.recommendations.map(
       (rec: Recommendation) => [
-        { text: rec.title, bold: true },
-        rec.category,
+        { text: rec.title ?? '', bold: true },
+        rec.category ?? '',
         {
-          text: rec.priority,
+          text: rec.priority ?? '',
           color: priorityColors[rec.priority] || '#000',
         },
-        rec.description,
+        rec.description ?? '',
       ],
     );
 

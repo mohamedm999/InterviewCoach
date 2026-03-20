@@ -6,6 +6,7 @@ import {
   Res,
   UseGuards,
   ParseUUIDPipe,
+  StreamableFile,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { PdfExportService } from './pdf-export.service';
@@ -20,8 +21,8 @@ export class PdfExportController {
   async generatePdf(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req,
-    @Res() res: Response,
-  ) {
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
     const pdfBuffer = await this.pdfExportService.generateAnalysisPdf(
       id,
       req.user.userId,
@@ -34,6 +35,6 @@ export class PdfExportController {
       'Content-Length': pdfBuffer.length,
     });
 
-    res.end(pdfBuffer);
+    return new StreamableFile(pdfBuffer);
   }
 }
