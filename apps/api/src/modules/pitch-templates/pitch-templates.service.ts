@@ -11,6 +11,7 @@ export class PitchTemplatesService {
 
   async findAll() {
     return this.prisma.pitchTemplate.findMany({
+      where: { isActive: true },
       orderBy: { createdAt: 'desc' },
     });
   }

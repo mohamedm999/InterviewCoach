@@ -23,9 +23,7 @@ import {
 @Controller('pitch-templates')
 @UseGuards(JwtAuthGuard)
 export class PitchTemplatesController {
-  constructor(
-    private readonly pitchTemplatesService: PitchTemplatesService,
-  ) {}
+  constructor(private readonly pitchTemplatesService: PitchTemplatesService) {}
 
   // GET /pitch-templates - Get all active templates (for users)
   @Get()
