@@ -78,6 +78,7 @@ export default () => ({
 
   // Email
   mail: {
+    mailtrapToken: process.env.MAILTRAP_TOKEN,
     host: process.env.MAIL_HOST,
     port: parseInt(process.env.MAIL_PORT || '587', 10),
     user: process.env.MAIL_USER,

@@ -16,6 +16,7 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { AuditLog } from '../../common/decorators/audit-log.decorator';
 import { Request, Response } from 'express';
 import { AuthSessionResult } from './auth.types';
@@ -173,5 +174,15 @@ export class AuthController {
   async verifyEmail(@Body() dto: VerifyEmailDto) {
     await this.authService.verifyEmail(dto.token);
     return { message: 'Email verified successfully' };
+  }
+
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  async resendVerification(@Body() dto: ResendVerificationDto) {
+    await this.authService.resendVerificationEmail(dto.email);
+    return {
+      message:
+        'If your account exists and is unverified, a new verification email has been sent.',
+    };
   }
 }

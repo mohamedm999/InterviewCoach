@@ -45,7 +45,10 @@ export class AuthService {
       where: { email: dto.email },
     });
     if (existing) {
-      throw new ConflictException('Email already registered');
+      throw new ConflictException({
+        code: ErrorCode.USER_EMAIL_EXISTS,
+        message: 'Email already registered',
+      });
     }
 
     // 2. Hash password
@@ -151,7 +154,15 @@ export class AuthService {
       });
     }
 
-    // 4. Clear failed attempts on successful login
+    // 4. Check email verification
+    if (!user.emailVerified) {
+      throw new UnauthorizedException({
+        code: ErrorCode.AUTH_EMAIL_NOT_VERIFIED,
+        message: 'Please verify your email before logging in',
+      });
+    }
+
+    // 5. Clear failed attempts on successful login
     this.attemptTracker.resetAttempts(dto.email);
 
     // 5. Update lastLoginAt
@@ -301,6 +312,32 @@ export class AuthService {
       data: { passwordHash },
     });
     await this.prisma.passwordResetToken.delete({ where: { token } });
+  }
+
+  // ─── Resend Verification Email ────────────────────────────────────────────────
+
+  async resendVerificationEmail(email: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    // Silent — don't expose whether email exists or is already verified
+    if (!user || user.emailVerified) return;
+
+    // Invalidate any existing tokens
+    await this.prisma.verificationToken.deleteMany({ where: { userId: user.id } });
+
+    // Issue a fresh token
+    const verToken = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await this.prisma.verificationToken.create({
+      data: { userId: user.id, token: verToken, expiresAt },
+    });
+
+    this.mailService
+      .sendVerificationEmail(user.email, verToken)
+      .catch((err) =>
+        this.logger.error(
+          `Failed to resend verification email to ${user.email}: ${err?.message}`,
+        ),
+      );
   }
 
   // ─── Logout ───────────────────────────────────────────────────────────────────

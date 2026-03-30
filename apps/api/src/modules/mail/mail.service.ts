@@ -1,30 +1,38 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { MailtrapClient } from 'mailtrap';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private readonly transporterReady: Promise<nodemailer.Transporter>;
-  private readonly fromAddress: string;
+  private readonly mailtrapClient: MailtrapClient | null = null;
+  private readonly transporterReady: Promise<nodemailer.Transporter> | null =
+    null;
   private readonly appUrl: string;
   private readonly isLocalDevelopment: boolean;
-  private readonly usingEthereal: boolean;
+  private usingEthereal = false;
 
   constructor(private configService: ConfigService) {
     const nodeEnv = configService.get<string>('nodeEnv') || 'development';
+    const mailtrapToken = configService.get<string>('mail.mailtrapToken');
     const host = configService.get<string>('mail.host');
     const port = configService.get<number>('mail.port') || 587;
     const user = configService.get<string>('mail.user');
     const pass = configService.get<string>('mail.password');
 
-    this.fromAddress =
-      configService.get<string>('mail.from') || 'no-reply@interviewcoach.app';
     this.appUrl =
       configService.get<string>('appUrl') || 'http://localhost:3001';
     this.isLocalDevelopment = nodeEnv === 'development';
-    this.usingEthereal = !host || !user || !pass;
 
+    // Priority 1: Mailtrap API token
+    if (mailtrapToken) {
+      this.mailtrapClient = new MailtrapClient({ token: mailtrapToken });
+      this.logger.log('Mail configured via Mailtrap API');
+      return;
+    }
+
+    // Priority 2: SMTP credentials
     if (host && user && pass) {
       const transporter = nodemailer.createTransport({
         host,
@@ -37,23 +45,23 @@ export class MailService {
       return;
     }
 
+    // Priority 3: Ethereal sandbox (dev only)
     if (!this.isLocalDevelopment) {
       throw new Error(
         'MAIL_HOST, MAIL_USER, and MAIL_PASSWORD are required outside local development',
       );
     }
 
+    this.usingEthereal = true;
     this.transporterReady = nodemailer.createTestAccount().then((account) => {
       const transporter = nodemailer.createTransport({
         host: 'smtp.ethereal.email',
         port: 587,
         auth: { user: account.user, pass: account.pass },
       });
-
       this.logger.warn(
-        'MAIL_USER / MAIL_PASSWORD not set. Using Ethereal sandbox in local development only.',
+        'No mail credentials set. Using Ethereal sandbox (dev only).',
       );
-
       return transporter;
     });
   }
@@ -93,9 +101,20 @@ export class MailService {
   }
 
   private async send(to: string, subject: string, html: string): Promise<void> {
-    const transporter = await this.transporterReady;
+    if (this.mailtrapClient) {
+      await this.mailtrapClient.send({
+        from: { email: 'hello@demomailtrap.co', name: 'InterviewCoach' },
+        to: [{ email: to }],
+        subject,
+        html,
+      });
+      this.logger.log(`Email sent via Mailtrap to ${to}`);
+      return;
+    }
+
+    const transporter = await this.transporterReady!;
     const info = await transporter.sendMail({
-      from: this.fromAddress,
+      from: 'noreply@interviewcoach.app',
       to,
       subject,
       html,
