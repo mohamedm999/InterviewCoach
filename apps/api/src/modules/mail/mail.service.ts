@@ -10,6 +10,7 @@ export class MailService {
   private readonly transporterReady: Promise<nodemailer.Transporter> | null =
     null;
   private readonly appUrl: string;
+  private readonly mailFrom: string;
   private readonly isLocalDevelopment: boolean;
   private usingEthereal = false;
 
@@ -23,7 +24,11 @@ export class MailService {
 
     this.appUrl =
       configService.get<string>('appUrl') || 'http://localhost:3001';
+    this.mailFrom =
+      configService.get<string>('mail.from') || 'noreply@interviewcoach.app';
     this.isLocalDevelopment = nodeEnv === 'development';
+
+
 
     // Priority 1: Mailtrap API token
     if (mailtrapToken) {
@@ -114,7 +119,7 @@ export class MailService {
 
     const transporter = await this.transporterReady!;
     const info = await transporter.sendMail({
-      from: 'noreply@interviewcoach.app',
+      from: this.mailFrom,
       to,
       subject,
       html,

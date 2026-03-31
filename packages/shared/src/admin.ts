@@ -46,6 +46,7 @@ export interface UserData {
   displayName: string | null;
   role: string;
   status: UserStatus;
+  emailVerified: boolean;
   createdAt: string;
 }
 

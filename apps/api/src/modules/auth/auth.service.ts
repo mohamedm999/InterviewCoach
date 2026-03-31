@@ -45,6 +45,14 @@ export class AuthService {
       where: { email: dto.email },
     });
     if (existing) {
+      if (!existing.emailVerified) {
+        // Resend verification and tell the user to check their inbox
+        await this.resendVerificationEmail(existing.email);
+        throw new UnauthorizedException({
+          code: ErrorCode.AUTH_EMAIL_NOT_VERIFIED,
+          message: 'Email registered but not verified. A new verification email has been sent.',
+        });
+      }
       throw new ConflictException({
         code: ErrorCode.USER_EMAIL_EXISTS,
         message: 'Email already registered',
