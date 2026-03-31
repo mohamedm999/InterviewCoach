@@ -28,8 +28,6 @@ export class MailService {
       configService.get<string>('mail.from') || 'noreply@interviewcoach.app';
     this.isLocalDevelopment = nodeEnv === 'development';
 
-
-
     // Priority 1: Mailtrap API token
     if (mailtrapToken) {
       this.mailtrapClient = new MailtrapClient({ token: mailtrapToken });

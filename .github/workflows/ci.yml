@@ -19,8 +19,10 @@ jobs:
         node-version: [18.x]
 
     env:
+      NODE_ENV: "test"
+      PORT: "3000"
       DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/interviewcoach_test"
-      JWT_SECRET: "ci-test-secret"
+      JWT_ACCESS_SECRET: "ci-test-access-secret"
       JWT_REFRESH_SECRET: "ci-test-refresh-secret"
       APP_URL: "http://localhost:3001"
       CORS_ORIGINS: "http://localhost:3001"
