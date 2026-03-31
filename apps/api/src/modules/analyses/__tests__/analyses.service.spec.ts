@@ -17,7 +17,7 @@ describe('AnalysesService', () => {
     id: 'analysis-id',
     userId: 'test-user-id',
     context: 'FORMAL' as Context,
-    inputText: 'Test pitch text',
+    inputText: 'This is a comprehensive test pitch text that contains enough characters to meet the minimum requirement of fifty characters for validation purposes in our testing suite.',
     inputTextHash: 'hash',
     versionIndex: 1,
     scoreGlobal: 75,
@@ -97,7 +97,7 @@ describe('AnalysesService', () => {
   describe('create', () => {
     const userId = 'test-user-id';
     const dto: CreateAnalysisDto = {
-      content: 'Test pitch text',
+      content: 'This is a comprehensive test pitch text that contains enough characters to meet the minimum requirement of fifty characters for validation purposes in our testing suite.',
       context: 'FORMAL' as Context,
     };
     const mockRecommendations = [
@@ -142,6 +142,7 @@ describe('AnalysesService', () => {
             analysis: {
               findFirst: jest.fn().mockResolvedValue(existingAnalysis),
               create: jest.fn().mockResolvedValue(createdAnalysis),
+              update: jest.fn().mockResolvedValue(createdAnalysis),
             },
             recommendation: {
               createMany: jest

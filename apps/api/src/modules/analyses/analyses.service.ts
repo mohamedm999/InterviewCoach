@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   BadRequestException,
   Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   MAX_PITCH_LENGTH,
@@ -13,29 +14,30 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAnalysisDto } from './dto/create-analysis.dto';
 import { AnalysisQueryDto } from './dto/analysis-query.dto';
 import { AnalysisResponseDto } from './dto/analysis-response.dto';
-import { AnalysisEngineService } from './analysis-engine.service';
 import { LlmCoachingService } from './llm-coaching.service';
 import { AnalysesGateway } from './analyses.gateway';
-import { Role, Analysis, Recommendation } from '@prisma/client';
+import { Role } from '@prisma/client';
 import { createHash } from 'crypto';
 import { sanitizeInput } from '../../common/utils/sanitizer';
 import { activeAnalysisWhere } from './analysis.where';
 import { LlmProviderUnavailableError } from './llm-provider.error';
 
-type AnalysisWithRecommendations = Analysis & {
-  recommendations: Recommendation[];
-};
-
-interface AnalysisWeights {
-  tone: number;
-  confidence: number;
-  readability: number;
-  impact: number;
-}
-
-interface AnalysisThresholds {
-  high: number;
-  medium: number;
+interface LlmAnalysisResult {
+  scores: {
+    global: number;
+    tone: number;
+    confidence: number;
+    readability: number;
+    impact: number;
+  };
+  recommendations: Array<{
+    category: string;
+    priority: 'HIGH' | 'MEDIUM' | 'LOW';
+    title: string;
+    description: string;
+    examples: string[];
+  }>;
+  coachingFeedback: string;
 }
 
 @Injectable()
@@ -44,7 +46,6 @@ export class AnalysesService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly engine: AnalysisEngineService,
     private readonly llm: LlmCoachingService,
     private readonly gateway: AnalysesGateway,
   ) {}
@@ -75,41 +76,15 @@ export class AnalysesService {
       // 1. Sanitize input to prevent XSS attacks
       const sanitizedContent = sanitizeInput(dto.content);
 
-      // 2. Normalize text (remove extra spaces, control characters, etc.)
-      const normalizedText = this.engine.normalizeText(sanitizedContent);
+      // 2. Normalize text
+      const normalizedText = sanitizedContent.trim();
 
       // 3. Compute SHA-256 hash of normalized text
       const inputTextHash = createHash('sha256')
         .update(normalizedText)
         .digest('hex');
 
-      // 4. Load AnalysisConfig weights/thresholds (use first config or defaults)
-      const config = await tx.analysisConfig.findFirst();
-      const weights = config?.weights ?? {
-        tone: 25,
-        confidence: 25,
-        readability: 25,
-        impact: 25,
-      };
-      const thresholds = config?.thresholds ?? { high: 30, medium: 60 };
-
-      // 5. Compute all scores
-      const tone = this.engine.computeToneScore(normalizedText, dto.context);
-      const confidence = this.engine.computeConfidenceScore(normalizedText);
-      const readability = this.engine.computeReadabilityScore(normalizedText);
-      const impact = this.engine.computeImpactScore(normalizedText);
-
-      // 6. Compute weighted global score
-      const weightsTyped = weights as unknown as AnalysisWeights;
-      const global = Math.round(
-        (tone * weightsTyped.tone +
-          confidence * weightsTyped.confidence +
-          readability * weightsTyped.readability +
-          impact * weightsTyped.impact) /
-          100,
-      );
-
-      // 7. Check for duplicate analysis (same user + same hash)
+      // 4. Check for duplicate analysis (same user + same hash)
       const existingAnalysis = await tx.analysis.findFirst({
         where: activeAnalysisWhere({ userId, inputTextHash }),
         orderBy: { versionIndex: 'desc' },
@@ -119,7 +94,25 @@ export class AnalysesService {
         ? existingAnalysis.versionIndex + 1
         : 0;
 
-      // 8. Create Analysis record
+      // 5. Call LLM for COMPLETE analysis (scores + recommendations + feedback)
+      let llmResult: LlmAnalysisResult;
+      try {
+        llmResult = await this.llm.analyzePitch(
+          normalizedText,
+          dto.context,
+        );
+      } catch (error) {
+        this.logger.error(`LLM analysis failed: ${error?.message}`);
+        throw new ServiceUnavailableException({
+          code: 'SYS_001',
+          message: 'AI analysis service unavailable. Please try again.',
+        });
+      }
+
+      // 6. Validate LLM scores are within range
+      this.validateScores(llmResult.scores);
+
+      // 7. Create Analysis record with LLM scores
       const analysis = await tx.analysis.create({
         data: {
           userId,
@@ -127,31 +120,26 @@ export class AnalysesService {
           inputText: normalizedText,
           inputTextHash,
           versionIndex,
-          scoreGlobal: global,
-          scoreTone: tone,
-          scoreConfidence: confidence,
-          scoreReadability: readability,
-          scoreImpact: impact,
+          scoreGlobal: llmResult.scores.global,
+          scoreTone: llmResult.scores.tone,
+          scoreConfidence: llmResult.scores.confidence,
+          scoreReadability: llmResult.scores.readability,
+          scoreImpact: llmResult.scores.impact,
           modelMeta: {
-            version: '1.0',
+            version: '2.0',
             timestamp: new Date().toISOString(),
+            provider: 'openrouter',
+            model: 'openai/gpt-4o-mini',
+            coachingFeedback: llmResult.coachingFeedback, // ✅ Save coaching feedback!
           },
         },
       });
 
-      // 9. Generate recommendations
-      const recommendations = this.engine.generateRecommendations(
-        { tone, confidence, readability, impact },
-        normalizedText,
-        dto.context,
-        thresholds as unknown as AnalysisThresholds,
-      );
-
-      // 10. Save recommendations
+      // 8. Save recommendations from LLM
       await tx.recommendation.createMany({
-        data: recommendations.map((r) => ({
+        data: llmResult.recommendations.map((r) => ({
           analysisId: analysis.id,
-          category: r.category,
+          category: r.category as any,
           priority: r.priority,
           title: r.title,
           description: r.description,
@@ -159,60 +147,22 @@ export class AnalysesService {
         })),
       });
 
-      // 11. Fetch created recommendations
+      // 9. Fetch created recommendations
       const createdRecommendations = await tx.recommendation.findMany({
         where: { analysisId: analysis.id },
       });
 
-      // 12. Generate AI coaching feedback
-      let coachingFeedback: string | undefined;
-      try {
-        coachingFeedback = await this.llm.generateCoaching(
-          normalizedText,
-          dto.context,
-          { tone, confidence, readability, impact, global },
-        );
-      } catch (error) {
-        if (error instanceof LlmProviderUnavailableError) {
-          this.logger.warn(
-            `Skipping LLM coaching feedback: ${error.message}`,
-          );
-          coachingFeedback = undefined;
-        } else {
-          throw error;
-        }
-      }
-
-      // 12a. Persist coaching feedback to modelMeta
-      if (coachingFeedback) {
-        await tx.analysis.update({
-          where: { id: analysis.id },
-          data: {
-            modelMeta: {
-              ...(analysis.modelMeta as object),
-              coachingFeedback,
-            },
-          },
-        });
-      }
-
-      // 13. Broadcast completion via WebSocket
+      // 10. Broadcast completion via WebSocket
       this.gateway.broadcastComplete(analysis.id);
 
-      // 14. Return response
+      // 11. Return response
       return {
         analysisId: analysis.id,
         userId: analysis.userId,
         context: analysis.context,
         inputText: analysis.inputText,
         versionIndex: analysis.versionIndex,
-        scores: {
-          global: analysis.scoreGlobal,
-          tone: analysis.scoreTone,
-          confidence: analysis.scoreConfidence,
-          readability: analysis.scoreReadability,
-          impact: analysis.scoreImpact,
-        },
+        scores: llmResult.scores,
         recommendations: createdRecommendations.map((r) => ({
           id: r.id,
           category: r.category,
@@ -221,10 +171,36 @@ export class AnalysesService {
           description: r.description,
           examples: r.examples,
         })),
-        coachingFeedback,
+        coachingFeedback: llmResult.coachingFeedback,
         createdAt: analysis.createdAt,
       };
     });
+  }
+
+  // ─── Validate Scores ──────────────────────────────────────────────────────
+
+  private validateScores(scores: {
+    global: number;
+    tone: number;
+    confidence: number;
+    readability: number;
+    impact: number;
+  }): void {
+    const allScores = [
+      scores.global,
+      scores.tone,
+      scores.confidence,
+      scores.readability,
+      scores.impact,
+    ];
+
+    for (const score of allScores) {
+      if (score < 0 || score > 100) {
+        throw new BadRequestException(
+          `Invalid score value: ${score}. All scores must be between 0 and 100.`,
+        );
+      }
+    }
   }
 
   // ─── Get One ──────────────────────────────────────────────────────────────
@@ -335,7 +311,7 @@ export class AnalysesService {
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
-  private toDto(analysis: AnalysisWithRecommendations): AnalysisResponseDto {
+  private toDto(analysis: any): AnalysisResponseDto {
     const meta = (analysis.modelMeta as Record<string, any>) || {};
     return {
       analysisId: analysis.id,
@@ -350,7 +326,7 @@ export class AnalysesService {
         readability: analysis.scoreReadability,
         impact: analysis.scoreImpact,
       },
-      recommendations: analysis.recommendations.map((r: Recommendation) => ({
+      recommendations: analysis.recommendations.map((r: any) => ({
         id: r.id,
         category: r.category,
         priority: r.priority,

@@ -33,6 +33,7 @@ describe('AuthService', () => {
     },
     verificationToken: {
       create: jest.fn(),
+      deleteMany: jest.fn(),
     },
   };
 
@@ -100,7 +101,7 @@ describe('AuthService', () => {
         role: 'USER' as Role,
         status: 'ACTIVE' as UserStatus,
         avatarUrl: null,
-        emailVerified: false,
+        emailVerified: true, // Set to true to allow login
         createdAt: new Date(),
         updatedAt: new Date(),
         lastLoginAt: null,
@@ -175,7 +176,7 @@ describe('AuthService', () => {
         status: 'ACTIVE' as UserStatus,
         displayName: null,
         avatarUrl: null,
-        emailVerified: false,
+        emailVerified: true, // Set to true to allow login
         createdAt: new Date(),
         updatedAt: new Date(),
         lastLoginAt: null,
@@ -206,7 +207,7 @@ describe('AuthService', () => {
         status: 'ACTIVE' as UserStatus,
         displayName: null,
         avatarUrl: null,
-        emailVerified: false,
+        emailVerified: true, // Set to true to allow login
         createdAt: new Date(),
         updatedAt: new Date(),
         lastLoginAt: null,
@@ -265,7 +266,7 @@ describe('AuthService', () => {
         status: 'ACTIVE' as UserStatus,
         displayName: null,
         avatarUrl: null,
-        emailVerified: false,
+        emailVerified: true, // Set to true to allow login
         createdAt: new Date(),
         updatedAt: new Date(),
         lastLoginAt: null,
@@ -293,7 +294,7 @@ describe('AuthService', () => {
         status: 'ACTIVE' as UserStatus,
         displayName: null,
         avatarUrl: null,
-        emailVerified: false,
+        emailVerified: true, // Set to true to allow login
         createdAt: new Date(),
         updatedAt: new Date(),
         lastLoginAt: null,
@@ -350,7 +351,7 @@ describe('AuthService', () => {
         status: 'ACTIVE' as UserStatus,
         displayName: null,
         avatarUrl: null,
-        emailVerified: false,
+        emailVerified: true, // Set to true to allow login
         createdAt: new Date(),
         updatedAt: new Date(),
         lastLoginAt: null,

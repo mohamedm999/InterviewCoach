@@ -95,14 +95,14 @@ export default () => ({
     apiKey: process.env.OPENAI_API_KEY,
   },
 
-  // LLM Coaching
+  // LLM Coaching (MANDATORY for analysis creation)
   llm: {
-    enabled: parseBoolean(process.env.LLM_COACHING_ENABLED, false),
+    enabled: parseBoolean(process.env.LLM_COACHING_ENABLED, true), // Enabled by default
     provider: parseLlmProvider(process.env.LLM_PROVIDER),
     model: process.env.LLM_MODEL || 'openai/gpt-4o-mini',
     timeoutMs: parseInteger(
       process.env.LLM_TIMEOUT_MS,
-      10000,
+      30000, // Increased timeout for coaching generation
       'LLM_TIMEOUT_MS',
     ),
     openrouter: {

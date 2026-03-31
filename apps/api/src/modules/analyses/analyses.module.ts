@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AnalysesService } from './analyses.service';
 import { AnalysesController } from './analyses.controller';
-import { AnalysisEngineService } from './analysis-engine.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { LlmCoachingService } from './llm-coaching.service';
 import { AnalysesGateway } from './analyses.gateway';
@@ -13,7 +12,6 @@ import { JwtModule } from '@nestjs/jwt';
   controllers: [AnalysesController],
   providers: [
     AnalysesService,
-    AnalysisEngineService,
     LlmCoachingService,
     AnalysesGateway,
   ],

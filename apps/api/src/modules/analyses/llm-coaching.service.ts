@@ -3,12 +3,22 @@ import { ConfigService } from '@nestjs/config';
 import { Context } from '@prisma/client';
 import { LlmProviderUnavailableError } from './llm-provider.error';
 
-interface CoachingScores {
-  global: number;
-  tone: number;
-  confidence: number;
-  readability: number;
-  impact: number;
+interface LlmAnalysisResult {
+  scores: {
+    global: number;
+    tone: number;
+    confidence: number;
+    readability: number;
+    impact: number;
+  };
+  recommendations: Array<{
+    category: string;
+    priority: 'HIGH' | 'MEDIUM' | 'LOW';
+    title: string;
+    description: string;
+    examples: string[];
+  }>;
+  coachingFeedback: string;
 }
 
 interface OpenRouterChatResponse {
@@ -65,24 +75,25 @@ export class LlmCoachingService {
     }
   }
 
-  async generateCoaching(
+  async analyzePitch(
     inputText: string,
     context: Context,
-    scores: CoachingScores,
-  ): Promise<string> {
+  ): Promise<LlmAnalysisResult> {
     if (!this.enabled) {
-      throw new LlmProviderUnavailableError('LLM coaching is disabled');
+      throw new LlmProviderUnavailableError(
+        'LLM coaching is disabled but is required for analysis creation. Please enable LLM_COACHING_ENABLED in environment variables.',
+      );
     }
 
     if (this.provider !== 'openrouter') {
       throw new LlmProviderUnavailableError(
-        `Unsupported LLM provider: ${this.provider}`,
+        `Unsupported LLM provider: ${this.provider}. Only openrouter is supported.`,
       );
     }
 
     if (!this.openRouterApiKey) {
       throw new LlmProviderUnavailableError(
-        'OpenRouter API key is not configured',
+        'OPENROUTER_API_KEY is not configured. LLM coaching is required for analysis creation.',
       );
     }
 
@@ -102,15 +113,53 @@ export class LlmCoachingService {
             messages: [
               {
                 role: 'system',
-                content: `You are an expert interview coach analyzing a candidate's response in a ${context.toLowerCase()} context. Given their response and their rule-based scores, provide one concise, encouraging paragraph of qualitative feedback on how they can improve.`,
+                content: `You are an expert interview coach. Analyze the candidate's response and provide structured feedback.
+
+IMPORTANT: Detect and penalize nonsense text (repetition, lorem ipsum, random words, placeholder text).
+
+CRITICAL: You MUST respond with ONLY valid JSON. No text before or after the JSON. Just pure JSON.
+
+The JSON structure MUST be:
+{
+  "scores": {
+    "global": 75,
+    "tone": 80,
+    "confidence": 70,
+    "readability": 85,
+    "impact": 70
+  },
+  "recommendations": [
+    {
+      "category": "CONFIDENCE",
+      "priority": "MEDIUM",
+      "title": "Improve confidence",
+      "description": "Your description here",
+      "examples": ["Example 1", "Example 2"]
+    }
+  ],
+  "coachingFeedback": "One paragraph of personalized feedback here."
+}
+
+Scoring guidelines:
+- Tone: Appropriateness for ${context.toLowerCase()} context, assertiveness vs hedging
+- Confidence: Self-assurance, active voice, no hesitations  
+- Readability: Clear structure, varied vocabulary, not repetitive
+- Impact: Concrete achievements, metrics, action verbs
+- Global: Weighted average
+
+If text is nonsense/repetitive/placeholder, give scores below 40 and say so in feedback.
+
+REMEMBER: ONLY JSON. NO OTHER TEXT.`,
               },
               {
                 role: 'user',
-                content: `Response:\n"${inputText}"\n\nScores (out of 100):\nOverall: ${scores.global}\nTone: ${scores.tone}\nConfidence: ${scores.confidence}\nReadability: ${scores.readability}\nImpact: ${scores.impact}`,
+                content: `Context: ${context}\n\nMy response:\n"${inputText}"`,
               },
             ],
-            temperature: 0.7,
-            max_tokens: 150,
+            temperature: 0.3,
+            max_tokens: 800, // Increased for longer JSON responses
+            // Note: response_format removed - not supported by free models
+            // Instead, we strongly instruct JSON in the prompt
           }),
           signal: AbortSignal.timeout(this.timeoutMs),
         },
@@ -128,24 +177,96 @@ export class LlmCoachingService {
       const content = payload.choices?.[0]?.message?.content?.trim();
       if (!content) {
         throw new LlmProviderUnavailableError(
-          'OpenRouter returned an empty coaching response',
+          'OpenRouter returned an empty response',
           payload,
         );
       }
 
-      return content;
+      this.logger.log(`Raw LLM response length: ${content?.length || 0} characters`);
+      this.logger.log(`Raw LLM response (first 1000 chars): ${content?.substring(0, 1000) || 'empty'}`);
+      
+      // Log full response at debug level only
+      this.logger.debug(`FULL RAW RESPONSE: ${content}`);
+
+      // Parse JSON response - try to extract JSON from text
+      let result: LlmAnalysisResult;
+      try {
+        // Try to parse directly first
+        result = JSON.parse(content) as LlmAnalysisResult;
+      } catch (parseError) {
+        // If direct parse fails, try to extract JSON from text
+        this.logger.warn('Direct JSON parse failed, trying to extract JSON from response...');
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            result = JSON.parse(jsonMatch[0]) as LlmAnalysisResult;
+            this.logger.log('Successfully extracted JSON from response');
+          } catch (extractError) {
+            this.logger.error(`Failed to extract JSON: ${content}`);
+            throw new LlmProviderUnavailableError(
+              'OpenRouter returned invalid JSON response',
+              payload,
+            );
+          }
+        } else {
+          this.logger.error(`No JSON found in response. Model returned: ${content}`);
+          throw new LlmProviderUnavailableError(
+            'OpenRouter returned invalid JSON response - no JSON structure found. Check logs for full response.',
+            payload,
+          );
+        }
+      }
+
+      // Validate structure
+      if (!result.scores || !result.recommendations || !result.coachingFeedback) {
+        throw new LlmProviderUnavailableError(
+          'OpenRouter returned invalid response structure - missing required fields',
+          payload,
+        );
+      }
+
+      // Normalize category values to match our enum
+      const validCategories = ['TONE', 'CONFIDENCE', 'READABILITY', 'IMPACT', 'STRUCTURE', 'GENERAL'];
+      for (const rec of result.recommendations) {
+        // Map invalid categories to GENERAL
+        if (!validCategories.includes(rec.category)) {
+          this.logger.warn(`Mapping unknown category "${rec.category}" to GENERAL`);
+          rec.category = 'GENERAL';
+        }
+      }
+
+      return result;
     } catch (error) {
       if (error instanceof LlmProviderUnavailableError) {
         throw error;
       }
 
+      if (error instanceof SyntaxError) {
+        this.logger.warn('OpenRouter returned invalid JSON');
+        throw new LlmProviderUnavailableError(
+          'OpenRouter returned invalid JSON response',
+          error,
+        );
+      }
+
       this.logger.warn(
-        `OpenRouter coaching request failed for model ${this.model}`,
+        `OpenRouter analysis request failed for model ${this.model}`,
       );
       throw new LlmProviderUnavailableError(
-        'OpenRouter coaching is unavailable',
+        'OpenRouter analysis is unavailable',
         error,
       );
     }
+  }
+
+  // ─── Deprecated: Keep for backward compatibility ──────────────────────────
+
+  async generateCoaching(
+    inputText: string,
+    context: Context,
+    scores: any,
+  ): Promise<string> {
+    const result = await this.analyzePitch(inputText, context);
+    return result.coachingFeedback;
   }
 }
