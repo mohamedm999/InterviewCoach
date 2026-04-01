@@ -202,6 +202,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
       return;
     }
 
+    // Log the actual exception for 500 errors
+    if (exception instanceof Error) {
+      this.logger.error(`[${requestId}] Exception: ${exception.message}\n${exception.stack}`);
+    } else {
+      this.logger.error(`[${requestId}] Non-Error exception: ${String(exception)}`);
+    }
+
     Sentry.withScope((scope) => {
       scope.setTag('request_id', requestId);
       scope.setTag('error_code', errorCode);

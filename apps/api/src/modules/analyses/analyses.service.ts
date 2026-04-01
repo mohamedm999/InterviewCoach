@@ -16,7 +16,7 @@ import { AnalysisQueryDto } from './dto/analysis-query.dto';
 import { AnalysisResponseDto } from './dto/analysis-response.dto';
 import { LlmCoachingService } from './llm-coaching.service';
 import { AnalysesGateway } from './analyses.gateway';
-import { Role } from '@prisma/client';
+import { Role, RecommendationCategory } from '@prisma/client';
 import { createHash } from 'crypto';
 import { sanitizeInput } from '../../common/utils/sanitizer';
 import { activeAnalysisWhere } from './analysis.where';
@@ -71,48 +71,48 @@ export class AnalysesService {
       );
     }
 
-    // Use transaction to ensure data consistency
-    return await this.prisma.$transaction(async (tx) => {
-      // 1. Sanitize input to prevent XSS attacks
-      const sanitizedContent = sanitizeInput(dto.content);
+    // 1. Sanitize input to prevent XSS attacks
+    const sanitizedContent = sanitizeInput(dto.content);
 
-      // 2. Normalize text
-      const normalizedText = sanitizedContent.trim();
+    // 2. Normalize text
+    const normalizedText = sanitizedContent.trim();
 
-      // 3. Compute SHA-256 hash of normalized text
-      const inputTextHash = createHash('sha256')
-        .update(normalizedText)
-        .digest('hex');
+    // 3. Compute SHA-256 hash of normalized text
+    const inputTextHash = createHash('sha256')
+      .update(normalizedText)
+      .digest('hex');
 
-      // 4. Check for duplicate analysis (same user + same hash)
-      const existingAnalysis = await tx.analysis.findFirst({
-        where: activeAnalysisWhere({ userId, inputTextHash }),
-        orderBy: { versionIndex: 'desc' },
+    // 4. Check for duplicate analysis (same user + same hash) - OUTSIDE transaction
+    const existingAnalysis = await this.prisma.analysis.findFirst({
+      where: activeAnalysisWhere({ userId, inputTextHash }),
+      orderBy: { versionIndex: 'desc' },
+    });
+
+    const versionIndex = existingAnalysis
+      ? existingAnalysis.versionIndex + 1
+      : 0;
+
+    // 5. Call LLM for COMPLETE analysis (scores + recommendations + feedback) - OUTSIDE transaction
+    let llmResult: LlmAnalysisResult;
+    try {
+      llmResult = await this.llm.analyzePitch(
+        normalizedText,
+        dto.context,
+      );
+    } catch (error) {
+      this.logger.error(`LLM analysis failed: ${error?.message}`);
+      throw new ServiceUnavailableException({
+        code: 'SYS_001',
+        message: 'AI analysis service unavailable. Please try again.',
       });
+    }
 
-      const versionIndex = existingAnalysis
-        ? existingAnalysis.versionIndex + 1
-        : 0;
+    // 6. Validate LLM scores are within range
+    this.validateScores(llmResult.scores);
 
-      // 5. Call LLM for COMPLETE analysis (scores + recommendations + feedback)
-      let llmResult: LlmAnalysisResult;
-      try {
-        llmResult = await this.llm.analyzePitch(
-          normalizedText,
-          dto.context,
-        );
-      } catch (error) {
-        this.logger.error(`LLM analysis failed: ${error?.message}`);
-        throw new ServiceUnavailableException({
-          code: 'SYS_001',
-          message: 'AI analysis service unavailable. Please try again.',
-        });
-      }
-
-      // 6. Validate LLM scores are within range
-      this.validateScores(llmResult.scores);
-
-      // 7. Create Analysis record with LLM scores
+    // 7. Save to database in a SHORT transaction (only DB operations)
+    const analysis = await this.prisma.$transaction(async (tx) => {
+      // Create Analysis record
       const analysis = await tx.analysis.create({
         data: {
           userId,
@@ -129,13 +129,13 @@ export class AnalysesService {
             version: '2.0',
             timestamp: new Date().toISOString(),
             provider: 'openrouter',
-            model: 'openai/gpt-4o-mini',
-            coachingFeedback: llmResult.coachingFeedback, // ✅ Save coaching feedback!
+            model: 'nvidia/nemotron-3-super-120b-a12b:free',
+            coachingFeedback: llmResult.coachingFeedback,
           },
         },
       });
 
-      // 8. Save recommendations from LLM
+      // Save recommendations
       await tx.recommendation.createMany({
         data: llmResult.recommendations.map((r) => ({
           analysisId: analysis.id,
@@ -147,34 +147,31 @@ export class AnalysesService {
         })),
       });
 
-      // 9. Fetch created recommendations
-      const createdRecommendations = await tx.recommendation.findMany({
-        where: { analysisId: analysis.id },
-      });
-
-      // 10. Broadcast completion via WebSocket
-      this.gateway.broadcastComplete(analysis.id);
-
-      // 11. Return response
-      return {
-        analysisId: analysis.id,
-        userId: analysis.userId,
-        context: analysis.context,
-        inputText: analysis.inputText,
-        versionIndex: analysis.versionIndex,
-        scores: llmResult.scores,
-        recommendations: createdRecommendations.map((r) => ({
-          id: r.id,
-          category: r.category,
-          priority: r.priority,
-          title: r.title,
-          description: r.description,
-          examples: r.examples,
-        })),
-        coachingFeedback: llmResult.coachingFeedback,
-        createdAt: analysis.createdAt,
-      };
+      return analysis;
     });
+
+    // 8. Broadcast completion via WebSocket
+    this.gateway.broadcastComplete(analysis.id);
+
+    // 9. Return response
+    return {
+      analysisId: analysis.id,
+      userId: analysis.userId,
+      context: analysis.context,
+      inputText: analysis.inputText,
+      versionIndex: analysis.versionIndex,
+      scores: llmResult.scores,
+      recommendations: llmResult.recommendations.map((r) => ({
+        id: '',
+        category: r.category as RecommendationCategory,
+        priority: r.priority,
+        title: r.title,
+        description: r.description,
+        examples: r.examples,
+      })),
+      coachingFeedback: llmResult.coachingFeedback,
+      createdAt: analysis.createdAt,
+    };
   }
 
   // ─── Validate Scores ──────────────────────────────────────────────────────
